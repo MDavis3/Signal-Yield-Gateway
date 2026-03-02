@@ -137,7 +137,7 @@ def moving_average_subtract(
 
 def detect_spikes_derivative(
     signal: np.ndarray,
-    threshold: float = 3.0
+    threshold: float = 30.0
 ) -> int:
     """
     Detect neural action potentials using derivative-based edge detection.
@@ -160,7 +160,9 @@ def detect_spikes_derivative(
     signal : np.ndarray
         Centered signal after baseline drift removal (shape: [n_samples])
     threshold : float
-        Derivative threshold for spike detection (default: 3.0)
+        Derivative threshold for spike detection (default: 30.0)
+        At 40kHz sampling (25μs/sample), threshold of 30μV corresponds to
+        1200μV/ms slope, which is characteristic of neural spikes.
         Higher = fewer false positives, may miss small spikes
         Lower = more sensitive, may detect noise as spikes
 
@@ -288,7 +290,7 @@ def process_signal(
     # Step 2: Detect neural spikes (O(n) linear pass)
     spike_count = detect_spikes_derivative(
         centered_signal,
-        config.get('spike_threshold', 3.0)
+        config.get('spike_threshold', 30.0)
     )
 
     # Step 3: Soft-clip normalization (O(n) vectorized)

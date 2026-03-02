@@ -1,0 +1,197 @@
+
+================================================================================
+AXOFT SIGNAL YIELD GATEWAY - COMPREHENSIVE TEST SUITE
+================================================================================
+Testing all components: Simulator, DSP, Metrics, Storage, Integration
+================================================================================
+
+================================================================================
+TEST 1: DATA SIMULATOR
+================================================================================
+
+[Test 1.1] Basic chunk generation
+  [PASS] Chunk has correct length (2000 samples)
+  [PASS] Chunk is float32 type
+
+[Test 1.2] Noise-only signal
+  [PASS] Noise standard deviation in reasonable range (value=14.823277473449707, range=[5.0, 25.0])
+
+[Test 1.3] Drift-only signal (sinusoidal)
+  [FAIL] Drift amplitude in expected range
+         Value 37.95982360839844 outside range [200.0, 500.0]
+
+[Test 1.4] Spike-only signal
+  [PASS] Spike amplitude is significant (>50 uV)
+
+[Test 1.5] Full signal (noise + drift + spikes)
+  [PASS] Full signal has correct length
+  [PASS] Full signal max in reasonable range (value=158.61680603027344, range=[50.0, 800.0])
+
+================================================================================
+TEST 2: CIRCULAR BUFFER
+================================================================================
+
+[Test 2.1] Basic buffer operations
+  [PASS] First value average is itself (actual=10.0000, expected=10.0000)
+  [PASS] Average of [10, 20, 30, 40] is 25.0 (actual=25.0000, expected=25.0000)
+
+[Test 2.2] Buffer overflow handling
+  [PASS] Buffer correctly drops oldest value (actual=40.0000, expected=40.0000)
+
+[Test 2.3] Buffer reset
+  [PASS] Buffer resets correctly (actual=100.0000, expected=100.0000)
+
+================================================================================
+TEST 3: MOVING AVERAGE SUBTRACTION
+================================================================================
+
+[Test 3.1] Constant signal
+  [PASS] Constant signal centers to ~0 (actual=0.0000, expected=0.0000)
+
+[Test 3.2] Linear drift removal
+  [PASS] Drift removal reduces variance
+
+[Test 3.3] Spike preservation
+  [PASS] Moving average preserves spikes
+
+================================================================================
+TEST 4: SPIKE DETECTION
+================================================================================
+
+[Test 4.1] No spikes in flat signal
+  [PASS] Flat signal has no spikes
+
+[Test 4.2] Single clear spike
+  [PASS] Single spike detected (1-5 threshold crossings) (value=4, range=[1, 5])
+
+[Test 4.3] Multiple spikes
+  [PASS] Multiple spikes detected (value=12, range=[3, 15])
+
+[Test 4.4] Noise rejection (high threshold)
+  [PASS] High threshold rejects noise
+
+================================================================================
+TEST 5: TANH NORMALIZATION
+================================================================================
+
+[Test 5.1] Bounds guarantee [-1, 1]
+  [PASS] All values within [-1, 1] bounds
+  [PASS] Minimum approaches -1 (actual=-1.0000, expected=-1.0000)
+  [PASS] Maximum approaches 1 (actual=1.0000, expected=1.0000)
+
+[Test 5.2] Linear passthrough for small values
+  [PASS] Small values pass through linearly (actual=0.0997, expected=0.1000)
+
+[Test 5.3] Alpha parameter effect
+  [FAIL] Higher alpha compresses more
+
+[Test 5.4] Float32 output type
+  [PASS] Output is float32
+
+================================================================================
+TEST 6: FULL DSP PIPELINE
+================================================================================
+
+[Test 6.1] Latency budget compliance (<20ms)
+  [PASS] Pipeline latency 2.02ms < 20ms
+
+[Test 6.2] Output bounds [-1, 1]
+  [PASS] Cleaned tensor within [-1, 1] bounds
+
+[Test 6.3] Output shape preservation
+  [PASS] Output length matches input
+
+[Test 6.4] Output type (float32)
+  [PASS] Output is float32
+
+[Test 6.5] Metadata completeness
+  [PASS] Metadata contains 'spike_count'
+  [PASS] Metadata contains 'variance'
+  [PASS] Metadata contains 'mean'
+  [PASS] Metadata contains 'has_nan'
+  [PASS] Metadata contains 'has_inf'
+
+[Test 6.6] NaN/Inf detection
+  [PASS] No NaN values in clean data
+  [PASS] No Inf values in clean data
+
+[Test 6.7] Variance is reasonable
+  [PASS] Variance within [0, 1] for normalized signal (value=0.6225201487541199, range=[0.0, 1.0])
+
+[Test 6.8] Spike count is physically plausible
+  [FAIL] Spike count 1792 is plausible (<100 for 50ms)
+
+================================================================================
+TEST 7: METRICS ENGINE
+================================================================================
+
+[Test 7.1] Signal yield calculation
+  [PASS] Ideal conditions give high yield (70-100%) (value=94.0, range=[70.0, 100.0])
+
+[Test 7.2] Poor quality detection
+  [PASS] Poor conditions give low yield (0-50%) (value=32.0, range=[0.0, 50.0])
+
+[Test 7.3] Active channel mapping
+  [PASS] 100% yield -> ~9850 active channels (value=9803, range=[9700, 10000])
+  [PASS] 50% yield -> ~5000 active channels (value=4898, range=[4500, 5500])
+  [PASS] 0% yield -> ~0 active channels (value=0, range=[0, 500])
+
+[Test 7.4] System health status
+  [FAIL] High yield (95%) -> healthy status
+  [PASS] Low yield (30%) -> critical status
+
+[Test 7.5] Stability tracker
+  [PASS] Stability index reflects input (~90%) (value=89.70420900869598, range=[85.0, 95.0])
+  [PASS] Low variance indicates stable performance
+
+================================================================================
+TEST 8: STORAGE MANAGER
+================================================================================
+
+[Test 8.1] Basic storage operations
+  [PASS] Epoch count increments
+
+[Test 8.2] History retrieval
+  [PASS] Retrieved last 5 yields
+  [PASS] Most recent yield is 89.0 (actual=89.0000, expected=89.0000)
+
+[Test 8.3] Latest tensor retrieval
+  [PASS] Latest tensor retrieved
+  [PASS] Latest tensor has correct length
+
+[Test 8.4] Reset functionality
+  [PASS] Epoch count resets to 0
+  [PASS] No tensor after reset
+
+================================================================================
+TEST 9: END-TO-END INTEGRATION
+================================================================================
+
+[Test 9.1] Process 10 consecutive chunks
+  [PASS] Chunk 1: Latency 2.40ms < 20ms
+  [PASS] Chunk 2: Latency 1.83ms < 20ms
+  [PASS] Chunk 3: Latency 1.93ms < 20ms
+  [PASS] Chunk 4: Latency 2.27ms < 20ms
+  [PASS] Chunk 5: Latency 1.84ms < 20ms
+  [PASS] Chunk 6: Latency 1.82ms < 20ms
+  [PASS] Chunk 7: Latency 1.71ms < 20ms
+  [PASS] Chunk 8: Latency 2.26ms < 20ms
+  [PASS] Chunk 9: Latency 3.39ms < 20ms
+  [PASS] Chunk 10: Latency 3.14ms < 20ms
+
+[Test 9.2] Verify complete processing
+  [PASS] All 10 chunks processed
+  [PASS] Complete yield history stored
+  [PASS] Stability index in valid range (value=35.0, range=[0.0, 100.0])
+
+================================================================================
+FINAL TEST RESULTS
+================================================================================
+
+Total Tests: 66
+Passed: 62 (93.9%)
+Failed: 4 (6.1%)
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+SOME TESTS FAILED - REVIEW FAILURES ABOVE
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!

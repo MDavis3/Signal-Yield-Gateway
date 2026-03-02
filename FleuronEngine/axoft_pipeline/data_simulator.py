@@ -156,15 +156,20 @@ def generate_synthetic_chunk(
     # Low-frequency sinusoidal drift simulating electrode movement
     # from heartbeat (1 Hz) and respiration (0.3 Hz)
 
+    # Add random phase offsets to ensure we capture different parts of the
+    # drift waveform (since 50ms chunks are much shorter than drift period)
+    heartbeat_phase = np.random.uniform(0, 2 * np.pi)
+    respiration_phase = np.random.uniform(0, 2 * np.pi)
+
     # Primary drift: heartbeat component (1 Hz)
     heartbeat_freq = 1.0  # Hz
     heartbeat_amplitude = 200.0 * drift_severity  # μV (scales with severity)
-    heartbeat_drift = heartbeat_amplitude * np.sin(2 * np.pi * heartbeat_freq * time_axis)
+    heartbeat_drift = heartbeat_amplitude * np.sin(2 * np.pi * heartbeat_freq * time_axis + heartbeat_phase)
 
     # Secondary drift: respiration component (0.3 Hz)
     respiration_freq = 0.3  # Hz
     respiration_amplitude = 150.0 * drift_severity  # μV
-    respiration_drift = respiration_amplitude * np.sin(2 * np.pi * respiration_freq * time_axis)
+    respiration_drift = respiration_amplitude * np.sin(2 * np.pi * respiration_freq * time_axis + respiration_phase)
 
     # Total drift is combination of both components
     drift = heartbeat_drift + respiration_drift
