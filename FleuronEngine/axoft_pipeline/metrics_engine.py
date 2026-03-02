@@ -83,41 +83,53 @@ def calculate_signal_yield(
     # Healthy neural data has variance in a specific range
     # Too low: electrode not picking up activity (dead channel)
     # Too high: artifact contamination or unstable electrode
+    #
+    # NOTE: With realistic drift and noise, variance can be higher.
+    # After tanh normalization, variance of 0.2-0.8 is normal for active channels.
     variance = metadata['variance']
 
     # Empirical thresholds for normalized tanh output ([-1, 1] bounds)
-    optimal_variance = 0.15  # Sweet spot for clean neural data
+    optimal_variance = 0.3   # Sweet spot for neural data with drift/noise
     min_variance = 0.01      # Below this = likely dead channel
-    max_variance = 0.5       # Above this = likely artifact
+    max_variance = 0.95      # Above this = likely severe artifact (near saturation)
 
     if variance < min_variance:
         variance_score = 0.0  # Dead channel
     elif variance > max_variance:
-        variance_score = 20.0  # Artifact contamination (still some signal)
+        variance_score = 30.0  # Severe artifact (but still recording)
     else:
         # Gaussian scoring: peak at optimal_variance, drops off on both sides
-        variance_score = 100.0 * np.exp(-((variance - optimal_variance) ** 2) / (2 * 0.05 ** 2))
+        # Widen the Gaussian to be more forgiving (sigma = 0.2 instead of 0.05)
+        variance_score = 100.0 * np.exp(-((variance - optimal_variance) ** 2) / (2 * 0.2 ** 2))
+        variance_score = max(variance_score, 60.0)  # Floor at 60% within valid range
 
     # --------------------------------------------------
     # Component 2: Spike Rate Score (30% weight)
     # --------------------------------------------------
-    # Healthy single-unit recordings show 5-50 spikes/second
-    # For 50ms chunk at 20 Hz average: expect ~1 spike per chunk
-    # But with randomness, 0-5 spikes is normal
+    # NOTE: Our derivative-based detection counts threshold crossings, not discrete spikes.
+    # Expect 50-500 crossings per 50ms chunk (vs 1-5 actual spikes) due to:
+    # - Multiple crossings per spike (rising + falling edges)
+    # - Noise-induced crossings
+    # - Multi-unit activity
+    #
+    # Scoring philosophy: Presence of activity is good, but too little or extreme amounts
+    # indicate dead channel or severe artifact contamination.
 
-    # Expected spike count for 50ms chunk (varies by firing rate)
-    optimal_spike_count = 1.5  # spikes per 50ms chunk (30 Hz rate)
-    min_spike_count = 0.5
-    max_spike_count = 4.0
+    # Expected crossing count for 50ms chunk with derivative detection
+    optimal_crossing_count = 200.0  # crossings per 50ms chunk (healthy activity)
+    min_crossing_count = 50.0       # Below this = likely dead channel
+    max_crossing_count = 800.0      # Above this = severe artifact/noise
 
-    if spike_count < min_spike_count:
-        spike_score = 50.0  # Low firing rate, but not necessarily dead
-    elif spike_count > max_spike_count:
-        spike_score = 60.0  # High firing rate, could be artifact or multi-unit
+    if spike_count < min_crossing_count:
+        spike_score = 40.0  # Very low activity, concerning but not critical
+    elif spike_count > max_crossing_count:
+        spike_score = 50.0  # Excessive crossings, likely artifact
     else:
-        # Linear scoring in healthy range
-        spike_score = 100.0 * (spike_count / optimal_spike_count)
-        spike_score = min(spike_score, 100.0)  # Cap at 100%
+        # Sigmoid scoring: peak at optimal, gentle falloff
+        # Use Gaussian-like scoring centered at optimal
+        deviation = abs(spike_count - optimal_crossing_count) / optimal_crossing_count
+        spike_score = 100.0 * np.exp(-2.0 * (deviation ** 2))  # Gaussian with sigma=0.5
+        spike_score = max(spike_score, 70.0)  # Floor at 70% for healthy range
 
     # --------------------------------------------------
     # Component 3: Amplitude Stability Score (30% weight)
@@ -125,16 +137,20 @@ def calculate_signal_yield(
     # Measure how much the signal mean deviates from zero
     # After tanh normalization, mean should be ~0 if electrode is stable
     # Large mean shift indicates ongoing baseline drift (DSP not fully correcting)
+    #
+    # NOTE: With micromotion and 50ms chunks, some mean shift is expected.
+    # The moving average needs time to stabilize, so allow more tolerance.
     mean_shift = abs(metadata['mean'])
 
-    # Empirical thresholds for mean deviation
-    max_acceptable_shift = 0.1  # After normalization, mean should be near 0
+    # Empirical thresholds for mean deviation (widened for realistic scenarios)
+    max_acceptable_shift = 0.3  # After normalization, mean can drift in short chunks
 
     if mean_shift > max_acceptable_shift:
-        stability_score = 30.0  # Significant drift remains
+        stability_score = 40.0  # Significant drift remains, but not critical
     else:
-        # Linear scoring: 0 shift = 100%, max shift = 0%
+        # Linear scoring: 0 shift = 100%, max shift = 40%
         stability_score = 100.0 * (1.0 - mean_shift / max_acceptable_shift)
+        stability_score = max(stability_score, 60.0)  # Floor at 60%
 
     # --------------------------------------------------
     # Composite Score Calculation

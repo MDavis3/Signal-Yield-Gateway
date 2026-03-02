@@ -188,7 +188,7 @@ def process_chunk():
     config = {
         'moving_avg_window': moving_avg_window,
         'tanh_alpha': tanh_alpha,
-        'spike_threshold': 3.0
+        'spike_threshold': 20.0
     }
 
     cleaned_tensor, latency_ms, metadata = process_signal_streaming(raw_chunk, config)

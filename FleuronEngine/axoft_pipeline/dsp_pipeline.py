@@ -137,7 +137,7 @@ def moving_average_subtract(
 
 def detect_spikes_derivative(
     signal: np.ndarray,
-    threshold: float = 30.0
+    threshold: float = 20.0
 ) -> int:
     """
     Detect neural action potentials using derivative-based edge detection.
@@ -290,7 +290,7 @@ def process_signal(
     # Step 2: Detect neural spikes (O(n) linear pass)
     spike_count = detect_spikes_derivative(
         centered_signal,
-        config.get('spike_threshold', 30.0)
+        config.get('spike_threshold', 20.0)
     )
 
     # Step 3: Soft-clip normalization (O(n) vectorized)

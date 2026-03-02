@@ -366,7 +366,7 @@ def test_full_pipeline():
     config = {
         'moving_avg_window': 500,
         'tanh_alpha': 1.0,
-        'spike_threshold': 30.0
+        'spike_threshold': 20.0
     }
 
     cleaned_tensor, latency_ms, metadata = process_signal_streaming(raw_chunk, config)
@@ -424,26 +424,26 @@ def test_metrics_engine():
 
     # Test 7.1: Signal yield calculation
     print("\n[Test 7.1] Signal yield calculation")
-    # Create ideal conditions: good variance, reasonable spike count, low mean
+    # Create ideal conditions: good variance, reasonable crossing count (derivative detection), low mean
     ideal_signal = np.random.randn(2000) * 0.4  # Variance ~0.16
     ideal_metadata = {
-        'variance': 0.15,
+        'variance': 0.30,  # Optimal for drift/noise scenario
         'mean': 0.02,
-        'spike_count': 2,
+        'spike_count': 200,  # Optimal crossing count for derivative detection
     }
     yield_pct = calculate_signal_yield(ideal_signal, ideal_metadata['spike_count'], ideal_metadata)
-    result.assert_range(yield_pct, 70.0, 100.0, "Ideal conditions give high yield (70-100%)")
+    result.assert_range(yield_pct, 85.0, 100.0, "Ideal conditions give high yield (85-100%)")
 
     # Test 7.2: Poor quality detection
     print("\n[Test 7.2] Poor quality detection")
     poor_signal = np.random.randn(2000) * 2.0  # Very high variance
     poor_metadata = {
-        'variance': 0.9,
-        'mean': 0.5,
-        'spike_count': 0,
+        'variance': 0.96,  # Above max_variance threshold (severe artifact)
+        'mean': 0.5,       # Large mean shift (unstable)
+        'spike_count': 20,  # Very low crossing count (dead or nearly dead)
     }
     yield_pct = calculate_signal_yield(poor_signal, poor_metadata['spike_count'], poor_metadata)
-    result.assert_range(yield_pct, 0.0, 50.0, "Poor conditions give low yield (0-50%)")
+    result.assert_range(yield_pct, 0.0, 40.0, "Poor conditions give low yield (0-40%)")
 
     # Test 7.3: Channel mapping
     print("\n[Test 7.3] Active channel mapping")
@@ -547,7 +547,7 @@ def test_end_to_end():
     config = {
         'moving_avg_window': 500,
         'tanh_alpha': 1.0,
-        'spike_threshold': 30.0  # Properly calibrated threshold for realistic spike counts
+        'spike_threshold': 20.0  # Properly calibrated threshold for realistic spike counts
     }
 
     for i in range(10):
