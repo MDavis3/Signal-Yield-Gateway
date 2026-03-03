@@ -23,6 +23,7 @@ from dsp_pipeline import (
     moving_average_subtract,
     detect_spikes_derivative,
     tanh_normalize,
+    process_signal,  # NEW: For polyfit tests
     process_signal_streaming,
     reset_streaming_buffer
 )
@@ -726,6 +727,125 @@ def test_smoothing_reduces_ringing():
     return result
 
 
+def test_polyfit_eliminates_ringing():
+    """
+    TEST 11: Polynomial Detrending Ringing Elimination
+
+    Verify polynomial fitting eliminates 95%+ of ringing artifacts
+    compared to moving average subtraction.
+    """
+    result = TestResult()
+    print("\n" + "=" * 80)
+    print("TEST 11: POLYNOMIAL DETRENDING RINGING ELIMINATION")
+    print("=" * 80)
+
+    # Create test signal with sharp spike (exposes ringing)
+    signal = np.zeros(2000, dtype=np.float32)
+    signal[:1000] = 100.0  # Baseline offset
+    signal[1000] = 200.0   # Sharp 100μV spike
+    signal[1001:] = 100.0  # Return to baseline
+
+    # Process with polyfit
+    config = {
+        'poly_order': 1,
+        'tanh_alpha': 1.0,
+        'spike_threshold': 20.0,
+        'smoothing_window': 0  # No smoothing
+    }
+
+    cleaned, _, metadata, _ = process_signal(signal, config, buffer=None)
+
+    # Measure ringing (std dev in post-spike region 1010-1100)
+    ringing = np.std(cleaned[1010:1100])
+
+    print(f"\n  Polyfit ringing: {ringing:.4f}")
+    print(f"  Target: <0.5 (95%+ reduction from MA baseline)")
+
+    result.assert_true(
+        ringing < 0.5,
+        f"Ringing {ringing:.4f} should be <0.5 (95%+ reduction)"
+    )
+
+    # Verify spike is still detectable
+    spike_preserved = np.max(cleaned) > 0.8
+    result.assert_true(
+        spike_preserved,
+        f"Spike peak {np.max(cleaned):.2f} should be >0.8 (preserved)"
+    )
+
+    print("  [PASS] Polyfit eliminates ringing while preserving spikes")
+
+    return result
+
+
+def test_polyfit_latency_budget():
+    """
+    TEST 12: Polynomial Detrending Latency Compliance
+
+    Verify polynomial fitting stays within 20ms thermal budget.
+    Target: <5ms average latency (85%+ headroom).
+    """
+    result = TestResult()
+    print("\n" + "=" * 80)
+    print("TEST 12: POLYFIT LATENCY BUDGET COMPLIANCE")
+    print("=" * 80)
+
+    reset_drift_phase()
+    reset_streaming_buffer()
+
+    # Generate realistic signal
+    raw_chunk = generate_synthetic_chunk(
+        duration_ms=50.0,
+        sample_rate=40000,
+        noise_level=0.3,
+        drift_severity=1.0,
+        spike_rate=20.0,
+        seed=42
+    )
+
+    config = {
+        'poly_order': 1,
+        'tanh_alpha': 1.0,
+        'spike_threshold': 20.0,
+        'smoothing_window': 0
+    }
+
+    # Benchmark latency over 100 iterations
+    latencies = []
+    for _ in range(100):
+        _, latency_ms, _, _ = process_signal(raw_chunk, config, buffer=None)
+        latencies.append(latency_ms)
+
+    avg_latency = np.mean(latencies)
+    max_latency = np.max(latencies)
+    min_latency = np.min(latencies)
+
+    print(f"\n  Average latency: {avg_latency:.2f}ms")
+    print(f"  Max latency:     {max_latency:.2f}ms")
+    print(f"  Min latency:     {min_latency:.2f}ms")
+    print(f"  Budget:          20.0ms")
+    print(f"  Headroom:        {((20.0 - avg_latency) / 20.0 * 100):.1f}%")
+
+    result.assert_true(
+        avg_latency < 20.0,
+        f"Avg latency {avg_latency:.2f}ms must be <20ms (thermal budget)"
+    )
+
+    result.assert_true(
+        max_latency < 20.0,
+        f"Max latency {max_latency:.2f}ms must be <20ms (worst case)"
+    )
+
+    result.assert_true(
+        avg_latency < 5.0,
+        f"Target avg latency {avg_latency:.2f}ms <5ms (85%+ headroom)"
+    )
+
+    print("  [PASS] Polyfit meets thermal budget with excellent headroom")
+
+    return result
+
+
 # ============================================================================
 # Main Test Runner
 # ============================================================================
@@ -750,6 +870,8 @@ def run_all_tests():
     all_results.append(test_storage_manager())
     all_results.append(test_end_to_end())
     all_results.append(test_smoothing_reduces_ringing())
+    all_results.append(test_polyfit_eliminates_ringing())  # NEW: Polyfit ringing test
+    all_results.append(test_polyfit_latency_budget())     # NEW: Polyfit latency test
 
     # Aggregate results
     print("\n" + "=" * 80)

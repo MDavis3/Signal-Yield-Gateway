@@ -115,22 +115,19 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("🔧 DSP Parameters")
 
-    moving_avg_window = st.slider(
-        "Moving Avg Window (samples)",
-        min_value=100,
-        max_value=2000,
-        value=400,
-        step=50,
-        help="Window size for baseline drift removal (400 = 10ms, optimal for 1Hz drift). CRITICAL: Smaller window = flatter baseline. 1500 = wavy baseline!"
-    )
+    # Polynomial detrending (replaces moving average)
+    # Order hardcoded to 1 (linear) - optimal for 50ms chunks with 1Hz drift
+    poly_order = 1
 
+    # Smoothing no longer needed (polyfit eliminates ringing)
+    # Keeping slider for optional noise reduction if desired
     smoothing_window = st.slider(
         "Smoothing Window (samples)",
         min_value=0,
         max_value=100,
-        value=10,
+        value=0,  # DEFAULT TO 0 (no smoothing needed with polyfit)
         step=5,
-        help="Post-MA smoothing to suppress ringing (10 = 0.25ms preserves spike shape). CRITICAL: 40+ destroys waveform morphology (square spikes)! Set to 0 to disable."
+        help="Optional noise reduction. Polyfit detrending eliminates ringing, so smoothing is rarely needed. Set to 0 to preserve spike morphology (recommended)."
     )
 
     stability_window = st.slider(
@@ -197,10 +194,10 @@ def process_chunk():
 
     # Process through DSP pipeline
     config = {
-        'moving_avg_window': moving_avg_window,
+        'poly_order': poly_order,  # Polynomial order for detrending (1 = linear)
         'tanh_alpha': tanh_alpha,
         'spike_threshold': 5.0,  # Lowered from 20.0 to detect 100μV spikes (derivative ≈8.3μV)
-        'smoothing_window': smoothing_window  # Post-MA smoothing for ringing suppression
+        'smoothing_window': smoothing_window  # Optional (default 0, not needed with polyfit)
     }
 
     cleaned_tensor, latency_ms, metadata = process_signal_streaming(raw_chunk, config)
