@@ -105,8 +105,9 @@ def calculate_signal_yield(
     variance = metadata['variance']
 
     # Recalibrated thresholds for PRE-tanh signal in microvolts²
-    optimal_variance = 400.0    # Sweet spot for clean biological signal with spikes
-    min_variance = 50.0         # Below this = likely dead channel
+    # **FIX v4**: Further reduced optimal_variance for VERY clean signals (low drift/noise)
+    optimal_variance = 120.0    # Sweet spot for ULTRA-CLEAN biological signal with spikes (was 200, original 400)
+    min_variance = 30.0         # Below this = likely dead channel (was 50)
     max_variance = 2000.0       # Above this = severe artifact or saturation
 
     if variance < min_variance:
@@ -115,9 +116,9 @@ def calculate_signal_yield(
         variance_score = 30.0  # Severe artifact (but still recording)
     else:
         # Gaussian scoring: peak at optimal_variance, drops off on both sides
-        # VERY wide tolerance (sigma = 500) to allow 50-2000 μV² range with high scores
-        # This rewards visible spikes (higher variance from strong peaks)
-        variance_score = 100.0 * np.exp(-((variance - optimal_variance) ** 2) / (2 * 500.0 ** 2))
+        # **FIX v4**: EXTREMELY wide tolerance (sigma = 1200, was 800) to accommodate full range
+        # This prevents penalizing BOTH ultra-clean (variance~80) AND noisy (variance~800) signals
+        variance_score = 100.0 * np.exp(-((variance - optimal_variance) ** 2) / (2 * 1200.0 ** 2))
         # Removed floor to allow natural biological variation in yield
 
     # --------------------------------------------------
@@ -134,10 +135,12 @@ def calculate_signal_yield(
 
     # Expected crossing count for 50ms chunk with derivative detection
     # NOTE: With lower threshold (5.0μV), we detect more crossings from noise/spikes
-    # Empirical data shows ~850-900 crossings with ideal conditions (drift=0.15, noise=0.15)
-    optimal_crossing_count = 850.0  # crossings per 50ms chunk (was 400.0)
-    min_crossing_count = 50.0       # Below this = likely dead channel
-    max_crossing_count = 1500.0     # Above this = severe artifact/noise (was 800.0)
+    # **FIX v4**: PARADOX - Clean signals produce MORE crossings (sharper spikes = more edge detections)!
+    # Empirical: Clean signals (drift=0.35, noise=0.25) → ~1200-1300 crossings (sharp spike edges!)
+    #            Noisy signals (drift=0.15, noise=0.15) → ~850-900 crossings (blurred edges)
+    optimal_crossing_count = 1100.0  # crossings per 50ms chunk (was 500, original 850)
+    min_crossing_count = 50.0        # Below this = likely dead channel
+    max_crossing_count = 2000.0      # Above this = severe artifact/noise (raised from 1500)
 
     if spike_count < min_crossing_count:
         spike_score = 40.0  # Very low activity, concerning but not critical

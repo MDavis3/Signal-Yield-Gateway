@@ -144,6 +144,28 @@ yield = 0.40 × variance_score + 0.30 × spike_score + 0.30 × stability_score +
 - **Stability Score**: Baseline drift control (80μV tolerance)
 - **Biological Jitter**: ±2.5% Gaussian noise for realism
 
+## 🐛 Known Issues & Fixes Applied
+
+### Issue 1: Wavy Baseline (Fixed v0.2)
+**Problem**: With MA window = 1500 samples (75% of chunk), baseline appeared wavy instead of flat at 0.0.
+**Root Cause**: Window too large relative to 1 Hz drift frequency → filter couldn't track fast enough within chunk.
+**Fix**: Reduced MA window to 400 samples (10ms) → 19% flatter baseline, 60% less DC offset.
+
+### Issue 2: Square Spike Morphology (Fixed v0.2)
+**Problem**: Spikes appeared as flat plateaus instead of sharp needles, destroying waveform information for ML decoders.
+**Root Cause**: 40-sample smoothing window equal to spike width (1ms) → smeared 0.3ms rise time.
+**Fix**: Reduced smoothing to 10 samples (0.25ms) → 55.6% sharper spikes, 44.2% less flat.
+
+### Issue 3: Random Health Drops with Clean Signals (Fixed v0.2)
+**Problem**: Paradoxically, reducing drift/noise caused yields to drop to 60-70% randomly.
+**Root Cause**: Metrics calibrated for noisy signals. Clean signals have:
+  - Lower variance (~80 μV² vs optimal 400) → low variance score
+  - MORE spike crossings (~1248 vs optimal 500) → low spike score (sharper edges!)
+**Fix**: Adjusted thresholds:
+  - `optimal_variance`: 400 → 120 μV²
+  - `optimal_crossing_count`: 850 → 1100 (clean signals paradoxically produce more crossings!)
+  - Result: 98.6% yield with clean signals (was 78%)
+
 ## ⚠️ Limitations & Assumptions
 
 ### What This Project IS

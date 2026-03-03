@@ -119,18 +119,18 @@ with st.sidebar:
         "Moving Avg Window (samples)",
         min_value=100,
         max_value=2000,
-        value=1500,
+        value=400,
         step=50,
-        help="Window size for baseline drift removal (1500 = 37.5ms, tracks slow drift without following spikes)"
+        help="Window size for baseline drift removal (400 = 10ms, optimal for 1Hz drift). CRITICAL: Smaller window = flatter baseline. 1500 = wavy baseline!"
     )
 
     smoothing_window = st.slider(
         "Smoothing Window (samples)",
         min_value=0,
         max_value=100,
-        value=40,
-        step=10,
-        help="Post-MA smoothing to suppress ringing artifacts (40 = 1ms, reduces oscillations without blurring spikes). Set to 0 to disable."
+        value=10,
+        step=5,
+        help="Post-MA smoothing to suppress ringing (10 = 0.25ms preserves spike shape). CRITICAL: 40+ destroys waveform morphology (square spikes)! Set to 0 to disable."
     )
 
     stability_window = st.slider(
