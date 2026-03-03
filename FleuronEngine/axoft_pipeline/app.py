@@ -83,13 +83,45 @@ with st.sidebar:
     st.title("⚙️ Axoft Pipeline Controller")
 
     st.markdown("---")
+    st.subheader("📋 Presets")
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        if st.button("🎯 Demo"):
+            st.session_state.preset_noise = 0.10
+            st.session_state.preset_drift = 0.20
+            st.session_state.preset_alpha = 0.70
+            st.rerun()
+
+    with col2:
+        if st.button("⚙️ Real"):
+            st.session_state.preset_noise = 0.30
+            st.session_state.preset_drift = 0.40
+            st.session_state.preset_alpha = 1.00
+            st.rerun()
+
+    with col3:
+        if st.button("🔥 Stress"):
+            st.session_state.preset_noise = 0.50
+            st.session_state.preset_drift = 1.00
+            st.session_state.preset_alpha = 1.50
+            st.rerun()
+
+    st.caption("Presets set noise, drift, and alpha for optimal visualization")
+
+    st.markdown("---")
     st.subheader("🔬 Signal Parameters")
+
+    # Use preset values if available, otherwise use slider defaults
+    default_drift = st.session_state.get('preset_drift', 0.40)
+    default_noise = st.session_state.get('preset_noise', 0.10)
 
     drift_severity = st.slider(
         "Micromotion Drift Severity",
         min_value=0.0,
         max_value=2.0,
-        value=0.40,
+        value=default_drift,
         step=0.05,
         help="Simulates physical electrode movement from heartbeat/respiration (0.40 = realistic biological conditions)"
     )
@@ -98,18 +130,21 @@ with st.sidebar:
         "Noise Level",
         min_value=0.0,
         max_value=1.0,
-        value=0.30,
+        value=default_noise,
         step=0.05,
-        help="Background Gaussian noise amplitude (0.30 = realistic biological conditions)"
+        help="Background Gaussian noise amplitude (0.10 = good recording conditions, 0.30 = realistic biological, 0.50 = noisy/worst-case)"
     )
+
+    # Use preset value if available, otherwise default to 1.0
+    default_alpha = st.session_state.get('preset_alpha', 1.0)
 
     tanh_alpha = st.slider(
         "Tanh Alpha (Gain)",
         min_value=0.1,
         max_value=5.0,
-        value=1.0,
+        value=default_alpha,
         step=0.1,
-        help="Soft-clipping compression steepness"
+        help="Compression steepness for visualization. Higher alpha = better spike separation in noisy signals. Recommended: 0.7 (Demo), 1.0 (Real), 1.5+ (Stress)"
     )
 
     st.markdown("---")
@@ -243,6 +278,19 @@ st.warning(
     "Real patient data validation is required before clinical use.",
     icon="⚠️"
 )
+
+# ============================================================================
+# Parameter Validation Warning
+# ============================================================================
+# Warn if alpha is too low for the current noise level (poor visual separation)
+if noise_level > 0.25 and tanh_alpha < 0.80:
+    recommended_alpha = max(1.0, noise_level * 2.5)
+    st.warning(
+        f"⚠️ **Visual Clarity Warning**: Low alpha ({tanh_alpha:.1f}) with high noise ({noise_level:.2f}) "
+        f"may reduce spike visibility. **Recommendation**: Increase alpha to {recommended_alpha:.1f}+ "
+        f"or click a preset button for optimal settings.",
+        icon="⚠️"
+    )
 
 if view_mode == "R&D Engineer View":
     # ========================================================================
