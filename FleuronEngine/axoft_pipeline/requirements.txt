@@ -1,0 +1,22 @@
+# Axoft Signal Yield & Clinical Translation Gateway - Dependencies
+# ===================================================================
+# Production-grade BCI signal processing pipeline for Axoft
+
+# Core Data Science & Numerical Computing
+numpy>=1.24.0,<2.0.0          # Vectorized numerical operations, DSP foundation
+pandas>=2.0.0,<3.0.0          # Data manipulation (optional, for future analytics)
+
+# Visualization & Dashboard
+streamlit>=1.30.0,<2.0.0      # Interactive web dashboard framework
+plotly>=5.18.0,<6.0.0         # Interactive plotting (dual-trace waveforms, stability charts)
+
+# Optional - For Production Redis Backend
+# Uncomment these if deploying with Redis storage backend:
+# redis>=5.0.0,<6.0.0         # Redis client for production storage
+# msgpack>=1.0.0,<2.0.0       # Binary serialization for tensor storage
+
+# Development & Testing (Optional)
+# pytest>=7.4.0               # Unit testing framework
+# pytest-cov>=4.1.0           # Code coverage reporting
+# black>=23.0.0               # Code formatting
+# mypy>=1.5.0                 # Static type checking
