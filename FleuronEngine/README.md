@@ -363,7 +363,7 @@ For detailed architecture and design rationale, see:
 
 For questions or feedback:
 - Open issues on GitHub
-- Contact: [Your Email/LinkedIn]
+- Contact: https://www.linkedin.com/in/manavdavis313/ , manav_davis@brown.edu
 
 ---
 
