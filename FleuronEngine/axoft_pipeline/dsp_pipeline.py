@@ -250,17 +250,23 @@ def tanh_normalize(
     alpha: float = 1.0
 ) -> np.ndarray:
     """
-    Apply hyperbolic tangent soft-clipping normalization with ADAPTIVE scaling.
+    Apply hyperbolic tangent soft-clipping normalization with STRICT 1σ scaling.
 
-    **CRITICAL FIX v2**: Remove DC offset before tanh to anchor baseline at 0.0
+    **CRITICAL FIX v3**: STRICT order of operations to prevent baseline float
 
-    The moving average subtraction can leave residual DC offset due to:
-    1. Buffer initialization lag (first 1500 samples)
-    2. Group delay (18.75ms lag for 1500-sample window)
-    3. Drift frequency changes faster than MA can track
+    MANDATORY ORDER (DO NOT REORDER):
+    1. centered = signal - mean(signal)  → Anchor baseline at exactly 0.0
+    2. std_val = max(std(centered), 1e-6) → Prevent divide-by-zero
+    3. scaled = centered / std_val       → Normalize to ±1σ units
+    4. cleaned = tanh(alpha * scaled)    → Soft-clip to [-1, 1]
 
-    This DC offset causes the cyan line to "float" away from 0.0. By subtracting
-    the mean BEFORE tanh, we guarantee the baseline stays anchored at 0.0.
+    Why this order matters:
+    -----------------------
+    With extreme negative drift (e.g., raw signal at -200 μV baseline):
+    - Moving average subtraction may leave residual DC offset
+    - MUST subtract mean FIRST to anchor at 0.0
+    - MUST use 1.0σ scaling (not 1.5σ) to prevent baseline float
+    - If baseline not anchored, spikes slam into tanh(1.0) ceiling as flat blocks
 
     Why tanh instead of hard clipping:
     ----------------------------------
@@ -269,24 +275,11 @@ def tanh_normalize(
     - np.tanh() is hardware-accelerated on most CPUs (SIMD vectorization)
     - Guarantees bounds [-1, 1] without conditional logic (no if-statements)
 
-    The tanh function acts as a "soft clipper":
-    - Small signals (noise): tanh(x) ≈ x ≈ 0 (linear passthrough)
-    - Medium signals (spikes): tanh(x) → 0.5-0.9 (clear peaks)
-    - Large signals (artifacts): tanh(x) → ±1 (soft saturation)
-
-    Adaptive Scaling Logic (1.5σ Rule):
-    ----------------------------------
-    - Remove mean (DC offset) to ensure true zero-centered signal
-    - Calculate std of zero-centered signal
-    - Scale factor = 1.5 * std
-    - Spikes (typically 5-10σ) reach tanh output of 0.7-1.0
-    - Background noise (±1σ) stays near 0 (tanh output ±0.3)
-
     Parameters:
     -----------
     signal : np.ndarray
         Centered signal after baseline drift removal (shape: [n_samples])
-        May have residual DC offset from MA lag
+        May have residual DC offset from MA lag or smoothing edge effects
         Expected units: microvolts (μV)
     alpha : float
         Gain parameter controlling compression steepness (default: 1.0)
@@ -297,37 +290,32 @@ def tanh_normalize(
     --------
     normalized_signal : np.ndarray
         Soft-clipped signal bounded to [-1, 1] (shape: [n_samples])
-        Baseline anchored at 0.0, spikes as sharp needles
+        Baseline STRICTLY anchored at 0.0, spikes as sharp needles
         Formatted as float32 PyTorch-ready tensor
 
     Complexity:
     -----------
     O(n) vectorized operation, hardware-accelerated
     """
-    # **CRITICAL FIX**: Remove DC offset to anchor baseline at 0.0
-    # The moving average can leave residual offset due to group delay
+    # STEP 1: Remove DC offset to anchor baseline at EXACTLY 0.0
+    # CRITICAL: This MUST be first operation
     signal_mean = np.mean(signal)
-    zero_centered_signal = signal - signal_mean
+    centered = signal - signal_mean
 
-    # Adaptive scaling: use 1.5σ rule for STRONG spike visibility
-    signal_std = np.std(zero_centered_signal)
+    # STEP 2: Compute standard deviation (prevent divide-by-zero)
+    # CRITICAL: Use max() to ensure std_val >= 1e-6
+    std_val = max(np.std(centered), 1e-6)
 
-    # Handle edge case: completely flat signal (all zeros)
-    if signal_std < 1e-6:
-        return np.zeros_like(signal, dtype=np.float32)
+    # STEP 3: Normalize by standard deviation (NOT 1.5σ!)
+    # CRITICAL: Use 1.0σ scaling to prevent baseline float
+    # With 1.0σ: 5σ spike → tanh(5.0) = 0.9999 (sharp needle)
+    # Background noise (±1σ) → tanh(±1.0) ≈ ±0.76
+    scaled = centered / std_val
 
-    # Scale factor: 1.5σ for STRONG spike peaks
-    # With 1.5σ: 5σ spike → 5/1.5 = 3.33 → tanh(3.33) = 0.997
-    # Background noise (±1σ) → tanh(±0.67) ≈ ±0.59
-    scale_factor = 1.5 * signal_std
+    # STEP 4: Apply tanh soft-clipping
+    cleaned = np.tanh(alpha * scaled).astype(np.float32)
 
-    # Scale zero-centered signal: μV → normalized range
-    scaled_signal = zero_centered_signal / scale_factor
-
-    # Apply tanh soft-clipping to scaled signal
-    normalized_signal = np.tanh(alpha * scaled_signal).astype(np.float32)
-
-    return normalized_signal
+    return cleaned
 
 
 def process_signal(
@@ -388,29 +376,31 @@ def process_signal(
     )
 
     # Step 2: Detect neural spikes (O(n) linear pass)
-    # Use CENTERED signal (pre-smoothing) for accurate spike detection
-    # Smoothing reduces derivatives and would harm spike detection accuracy
+    # CRITICAL: Use CENTERED signal for accurate spike detection
+    # Spike detection MUST happen on unsmoothed data for accuracy
     spike_count = detect_spikes_derivative(
-        centered_signal,  # Use pre-smoothing signal for accurate detection
+        centered_signal,  # Pre-smoothing signal for accurate detection
         config.get('spike_threshold', 20.0)
     )
 
-    # Step 2.5: Suppress high-frequency ringing (O(n) smoothing)
-    # Apply post-MA smoothing AFTER spike detection to reduce biphasic ringing artifacts
-    # This preserves spike detection accuracy while improving visual quality
-    # Allow disabling by setting smoothing_window to 0 for backward compatibility
-    smoothing_window = config.get('smoothing_window', 40)
-    if smoothing_window > 0:
-        smoothed_signal = smooth_signal_ma(centered_signal, smoothing_window)
-    else:
-        smoothed_signal = centered_signal  # No smoothing, backward compatible
-
     # Step 3: Soft-clip normalization (O(n) vectorized)
-    # Use smoothed signal for clean visualization (oscillation-free cyan line)
+    # **CRITICAL v3**: NO SMOOTHING on main signal path to preserve spike morphology
+    # User requirement: "preferably not at all on the main cleaned array, to preserve the spike needles"
+    # Smoothing destroys spike waveform information needed by ML decoders
+    # Order: centered → tanh_normalize (which re-centers and scales by 1σ)
     cleaned_tensor = tanh_normalize(
-        smoothed_signal,  # Use post-smoothing signal for clean visualization
+        centered_signal,  # UNSMOOTHED centered signal preserves sharp spike needles
         config['tanh_alpha']
     )
+
+    # Optional: Smoothing for visualization only (NOT used for main output)
+    # If you need smoothed visualization, apply AFTER tanh in the UI layer
+    # smoothing_window = config.get('smoothing_window', 0)
+    # if smoothing_window > 0:
+    #     # Smoothing available in metadata for alternate visualization
+    #     smoothed_for_viz = smooth_signal_ma(centered_signal, smoothing_window)
+    # else:
+    #     smoothed_for_viz = centered_signal
 
     # Step 4: NaN/Inf sanitization (CRITICAL for medical device safety)
     # Medical devices MUST NOT crash on anomalous data - graceful degradation required
@@ -426,18 +416,18 @@ def process_signal(
             neginf=-1.0   # Clip -inf to lower tanh bound
         )
 
-    # **CRITICAL FIX**: Calculate metadata on CENTERED signal (pre-smoothing AND pre-tanh)
-    # This decouples clinical metrics from BOTH aesthetic smoothing AND Tanh Alpha slider
+    # **CRITICAL FIX v3**: Calculate metadata on CENTERED signal (pre-tanh)
+    # This decouples clinical metrics from Tanh Alpha slider
     # User requirement: "calculate_signal_yield must evaluate health independent of visualization"
+    # NO SMOOTHING - preserves spike morphology for ML decoders
     metadata = {
         'spike_count': spike_count,
-        'variance': float(np.var(centered_signal)),      # PRE-smoothing variance (biological signal)
-        'mean': float(np.mean(centered_signal)),         # PRE-smoothing mean (biological signal)
+        'variance': float(np.var(centered_signal)),      # Biological signal variance (μV²)
+        'mean': float(np.mean(centered_signal)),         # Biological signal mean (μV)
         'has_nan': has_nan,       # Flag BEFORE sanitization (for health check)
         'has_inf': has_inf,       # Flag BEFORE sanitization (for health check)
         'was_sanitized': has_nan or has_inf,  # Flag indicating recovery occurred
-        'centered_signal': centered_signal,   # PRE-smoothing signal for metrics engine
-        'smoothed_signal': smoothed_signal    # POST-smoothing signal for reference
+        'centered_signal': centered_signal    # Unsmoothed centered signal for metrics
     }
 
     # Measure processing latency
