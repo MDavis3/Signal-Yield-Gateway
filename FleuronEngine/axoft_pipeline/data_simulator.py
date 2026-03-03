@@ -22,6 +22,13 @@ Date: 2026-03-02
 import numpy as np
 from typing import Tuple
 
+# Global phase state for continuous drift simulation across chunks
+_drift_phase_state = {
+    'heartbeat_phase': 0.0,
+    'respiration_phase': 0.0,
+    'initialized': False
+}
+
 
 def generate_synthetic_chunk(
     duration_ms: float = 50.0,
@@ -132,6 +139,11 @@ def generate_synthetic_chunk(
         if spike_idx >= n_samples:
             continue
 
+        # Add amplitude jitter to simulate varying distance from neuron
+        # Apply PER SPIKE, not to entire array (avoids compounding jitter)
+        amplitude_jitter = np.random.uniform(0.7, 1.3)
+        jittered_amplitude = spike_amplitude * amplitude_jitter
+
         # Generate realistic spike waveform (asymmetric)
         # Rising edge: exponential rise
         # Falling edge: exponential decay
@@ -140,15 +152,11 @@ def generate_synthetic_chunk(
 
             if t_rel >= 0 and t_rel < spike_rise_time:
                 # Rising phase (sharp)
-                spikes[i] += spike_amplitude * (t_rel / spike_rise_time)
+                spikes[i] += jittered_amplitude * (t_rel / spike_rise_time)
             elif t_rel >= spike_rise_time and t_rel < (spike_rise_time + spike_fall_time):
                 # Falling phase (slower decay)
                 decay_time = t_rel - spike_rise_time
-                spikes[i] += spike_amplitude * np.exp(-decay_time / (spike_fall_time / 3))
-
-        # Add amplitude jitter to simulate varying distance from neuron
-        amplitude_jitter = np.random.uniform(0.7, 1.3)
-        spikes *= amplitude_jitter
+                spikes[i] += jittered_amplitude * np.exp(-decay_time / (spike_fall_time / 3))
 
     # ======================
     # Component 3: Micromotion Baseline Drift
@@ -156,10 +164,18 @@ def generate_synthetic_chunk(
     # Low-frequency sinusoidal drift simulating electrode movement
     # from heartbeat (1 Hz) and respiration (0.3 Hz)
 
-    # Add random phase offsets to ensure we capture different parts of the
-    # drift waveform (since 50ms chunks are much shorter than drift period)
-    heartbeat_phase = np.random.uniform(0, 2 * np.pi)
-    respiration_phase = np.random.uniform(0, 2 * np.pi)
+    # CONTINUOUS DRIFT: Maintain phase continuity across chunks for realistic streaming
+    global _drift_phase_state
+
+    # Initialize phase on first call (or after reset)
+    if not _drift_phase_state['initialized']:
+        _drift_phase_state['heartbeat_phase'] = np.random.uniform(0, 2 * np.pi)
+        _drift_phase_state['respiration_phase'] = np.random.uniform(0, 2 * np.pi)
+        _drift_phase_state['initialized'] = True
+
+    # Use continuous phase from previous chunk
+    heartbeat_phase = _drift_phase_state['heartbeat_phase']
+    respiration_phase = _drift_phase_state['respiration_phase']
 
     # Primary drift: heartbeat component (1 Hz)
     heartbeat_freq = 1.0  # Hz
@@ -173,6 +189,14 @@ def generate_synthetic_chunk(
 
     # Total drift is combination of both components
     drift = heartbeat_drift + respiration_drift
+
+    # Update phase state for next chunk (advance by chunk duration)
+    _drift_phase_state['heartbeat_phase'] += 2 * np.pi * heartbeat_freq * (duration_ms / 1000.0)
+    _drift_phase_state['respiration_phase'] += 2 * np.pi * respiration_freq * (duration_ms / 1000.0)
+
+    # Wrap phases to [0, 2π) to prevent overflow
+    _drift_phase_state['heartbeat_phase'] %= (2 * np.pi)
+    _drift_phase_state['respiration_phase'] %= (2 * np.pi)
 
     # ======================
     # Combine All Components
@@ -230,6 +254,19 @@ def generate_batch(
         )
 
     return batch
+
+
+def reset_drift_phase():
+    """
+    Reset the global drift phase state.
+
+    Call this when starting a new recording session to randomize the initial
+    phase offsets. This ensures each session starts with different drift patterns.
+    """
+    global _drift_phase_state
+    _drift_phase_state['heartbeat_phase'] = 0.0
+    _drift_phase_state['respiration_phase'] = 0.0
+    _drift_phase_state['initialized'] = False
 
 
 def estimate_snr(signal: np.ndarray, spike_amplitude: float = 100.0) -> float:

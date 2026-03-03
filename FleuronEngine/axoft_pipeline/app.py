@@ -15,10 +15,11 @@ Date: 2026-03-02
 import streamlit as st
 import numpy as np
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import time
 
 # Import our modular pipeline components
-from data_simulator import generate_synthetic_chunk
+from data_simulator import generate_synthetic_chunk, reset_drift_phase
 from dsp_pipeline import process_signal_streaming, reset_streaming_buffer
 from metrics_engine import (
     calculate_signal_yield,
@@ -88,18 +89,18 @@ with st.sidebar:
         "Micromotion Drift Severity",
         min_value=0.0,
         max_value=2.0,
-        value=1.0,
-        step=0.1,
-        help="Simulates physical electrode movement from heartbeat/respiration"
+        value=0.40,
+        step=0.05,
+        help="Simulates physical electrode movement from heartbeat/respiration (0.40 = realistic biological conditions)"
     )
 
     noise_level = st.slider(
         "Noise Level",
         min_value=0.0,
         max_value=1.0,
-        value=0.3,
+        value=0.30,
         step=0.05,
-        help="Background Gaussian noise amplitude"
+        help="Background Gaussian noise amplitude (0.30 = realistic biological conditions)"
     )
 
     tanh_alpha = st.slider(
@@ -118,9 +119,18 @@ with st.sidebar:
         "Moving Avg Window (samples)",
         min_value=100,
         max_value=2000,
-        value=500,
+        value=1500,
         step=50,
-        help="Window size for baseline drift removal"
+        help="Window size for baseline drift removal (1500 = 37.5ms, tracks slow drift without following spikes)"
+    )
+
+    smoothing_window = st.slider(
+        "Smoothing Window (samples)",
+        min_value=0,
+        max_value=100,
+        value=40,
+        step=10,
+        help="Post-MA smoothing to suppress ringing artifacts (40 = 1ms, reduces oscillations without blurring spikes). Set to 0 to disable."
     )
 
     stability_window = st.slider(
@@ -160,6 +170,7 @@ with st.sidebar:
             st.session_state.storage.reset()
             st.session_state.stability_tracker.reset()
             reset_streaming_buffer()
+            reset_drift_phase()  # Reset continuous drift simulation
             st.session_state.session_start_time = time.time()
 
     st.markdown("---")
@@ -188,7 +199,8 @@ def process_chunk():
     config = {
         'moving_avg_window': moving_avg_window,
         'tanh_alpha': tanh_alpha,
-        'spike_threshold': 20.0
+        'spike_threshold': 5.0,  # Lowered from 20.0 to detect 100μV spikes (derivative ≈8.3μV)
+        'smoothing_window': smoothing_window  # Post-MA smoothing for ringing suppression
     }
 
     cleaned_tensor, latency_ms, metadata = process_signal_streaming(raw_chunk, config)
@@ -225,6 +237,16 @@ if st.session_state.is_playing or st.button("Generate", key="hidden_generate", d
 
 st.title("🧠 Axoft Signal Yield & Clinical Translation Gateway")
 
+# ============================================================================
+# Synthetic Data Warning Banner
+# ============================================================================
+st.warning(
+    "⚠️ **DEMO MODE**: This dashboard uses **synthetic neural data** generated from "
+    "mathematical models (Poisson spike trains, sinusoidal drift, Gaussian noise). "
+    "Real patient data validation is required before clinical use.",
+    icon="⚠️"
+)
+
 if view_mode == "R&D Engineer View":
     # ========================================================================
     # R&D Engineer View - Technical Waveforms and Latency
@@ -241,40 +263,61 @@ if view_mode == "R&D Engineer View":
         )
 
     if st.session_state.raw_signal is not None and st.session_state.cleaned_signal is not None:
-        # Create dual-trace comparison plot
-        fig = go.Figure()
+        # Create dual Y-axis plot to properly visualize both scales
+        # Raw signal: -40 to 120 μV (primary Y-axis, left)
+        # Tanh normalized: -1 to 1 (secondary Y-axis, right)
+        fig = make_subplots(specs=[[{"secondary_y": True}]])
 
         sample_indices = np.arange(len(st.session_state.raw_signal))
 
-        # Raw signal trace (red)
-        fig.add_trace(go.Scatter(
-            x=sample_indices,
-            y=st.session_state.raw_signal,
-            mode='lines',
-            name='Raw Drifting Signal',
-            line=dict(color='red', width=1),
-            opacity=0.7
-        ))
+        # Raw signal trace (red) - PRIMARY Y-AXIS (left)
+        fig.add_trace(
+            go.Scatter(
+                x=sample_indices,
+                y=st.session_state.raw_signal,
+                mode='lines',
+                name='Raw Drifting Signal (μV)',
+                line=dict(color='red', width=1),
+                opacity=0.7
+            ),
+            secondary_y=False  # Primary Y-axis (left)
+        )
 
-        # Cleaned signal trace (cyan)
-        fig.add_trace(go.Scatter(
-            x=sample_indices,
-            y=st.session_state.cleaned_signal,
-            mode='lines',
-            name='Tanh-Normalized Output',
-            line=dict(color='cyan', width=1.5)
-        ))
+        # Cleaned signal trace (cyan) - SECONDARY Y-AXIS (right)
+        fig.add_trace(
+            go.Scatter(
+                x=sample_indices,
+                y=st.session_state.cleaned_signal,
+                mode='lines',
+                name='Tanh-Normalized Output',
+                line=dict(color='cyan', width=2)
+            ),
+            secondary_y=True  # Secondary Y-axis (right)
+        )
 
+        # Update layout and axes
         fig.update_layout(
             title="Raw vs. Cleaned Signal Comparison (50ms Chunk @ 40kHz)",
             xaxis_title="Sample Index (0-2000)",
-            yaxis_title="Amplitude (μV / normalized)",
             template="plotly_dark",
             height=500,
-            hovermode='x unified'
+            hovermode='x unified',
+            legend=dict(x=0.01, y=0.99)
         )
 
-        st.plotly_chart(fig, use_container_width=True)
+        # Set Y-axis titles and ranges
+        fig.update_yaxes(
+            title_text="Raw Amplitude (μV)",
+            secondary_y=False  # Primary Y-axis (left)
+        )
+
+        fig.update_yaxes(
+            title_text="Tanh Normalized [-1, 1]",
+            range=[-1.2, 1.2],  # STRICTLY LOCK to [-1.2, 1.2]
+            secondary_y=True  # Secondary Y-axis (right)
+        )
+
+        st.plotly_chart(fig, width='stretch')
 
 else:
     # ========================================================================
@@ -308,6 +351,7 @@ else:
 
     # Chronic Stability Index Chart
     yield_history = st.session_state.stability_tracker.get_full_history()
+    smoothed_yield_history = st.session_state.stability_tracker.get_smoothed_history()
 
     if len(yield_history) > 0:
         stability_index, stability_variance = st.session_state.stability_tracker.calculate_stability_index(stability_window)
@@ -317,19 +361,33 @@ else:
 
         epoch_indices = np.arange(len(yield_history))
 
-        # Main stability line
+        # Main stability line (SMOOTHED via EMA for FDA presentation)
+        fig.add_trace(go.Scatter(
+            x=epoch_indices,
+            y=smoothed_yield_history,
+            mode='lines',
+            name='Signal Yield % (EMA Smoothed)',
+            line=dict(color='dodgerblue', width=2)
+        ))
+
+        # Optional: Add raw yield as faint background trace
         fig.add_trace(go.Scatter(
             x=epoch_indices,
             y=yield_history,
             mode='lines',
-            name='Signal Yield %',
-            line=dict(color='dodgerblue', width=2)
+            name='Raw Yield % (Unsmoothed)',
+            line=dict(color='gray', width=1),
+            opacity=0.3,
+            showlegend=True
         ))
 
-        # ±2σ confidence band
-        rolling_mean = np.convolve(yield_history, np.ones(min(stability_window, len(yield_history))) / min(stability_window, len(yield_history)), mode='same')
-        upper_bound = rolling_mean + 2 * stability_variance
-        lower_bound = rolling_mean - 2 * stability_variance
+        # ±2σ confidence band - calculated from SMOOTHED yields for statistical consistency
+        # Since we're plotting the EMA smoothed line, the envelope should reflect its variance
+        smoothed_array = np.array(smoothed_yield_history)
+        rolling_mean = np.convolve(smoothed_array, np.ones(min(stability_window, len(smoothed_array))) / min(stability_window, len(smoothed_array)), mode='same')
+        smoothed_std = np.std(smoothed_array[-min(stability_window, len(smoothed_array)):])
+        upper_bound = rolling_mean + 2 * smoothed_std
+        lower_bound = rolling_mean - 2 * smoothed_std
 
         fig.add_trace(go.Scatter(
             x=np.concatenate([epoch_indices, epoch_indices[::-1]]),
@@ -350,7 +408,7 @@ else:
             yaxis=dict(range=[0, 105])
         )
 
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
 
         st.markdown(f"**Business Value:** Array viability maintained at {stability_index:.1f}% without manual recalibration over {len(yield_history)} epochs.")
 

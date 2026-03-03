@@ -157,8 +157,17 @@ class InMemoryStorage(StorageManager):
     - Production long-term monitoring
     """
 
-    def __init__(self):
-        """Initialize empty in-memory storage."""
+    def __init__(self, max_history: int = 200):
+        """
+        Initialize empty in-memory storage with bounded memory.
+
+        Parameters:
+        -----------
+        max_history : int
+            Maximum number of epochs to store before truncating oldest (default: 200)
+            Prevents memory leak in long-running sessions
+        """
+        self.max_history = max_history
         self.tensors: List[np.ndarray] = []
         self.yields: List[float] = []
         self.metadata_list: List[Dict[str, Any]] = []
@@ -172,9 +181,10 @@ class InMemoryStorage(StorageManager):
         timestamp: Optional[float] = None
     ) -> None:
         """
-        Save tensor and metrics to in-memory lists.
+        Save tensor and metrics to in-memory lists with automatic truncation.
 
-        O(1) append operation, very fast.
+        O(1) append operation if under limit.
+        If at max_history, removes oldest entry (O(n) but only happens at boundary).
         """
         if timestamp is None:
             timestamp = time.time()
@@ -184,6 +194,13 @@ class InMemoryStorage(StorageManager):
         self.yields.append(yield_pct)
         self.metadata_list.append(metadata.copy())
         self.timestamps.append(timestamp)
+
+        # **MEMORY LEAK FIX**: Truncate to max_history to prevent unbounded growth
+        if len(self.tensors) > self.max_history:
+            self.tensors.pop(0)
+            self.yields.pop(0)
+            self.metadata_list.pop(0)
+            self.timestamps.pop(0)
 
     def get_yield_history(self, max_count: int = 200) -> List[float]:
         """
