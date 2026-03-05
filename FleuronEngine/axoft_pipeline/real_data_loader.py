@@ -41,6 +41,7 @@ class RealDataLoader:
         self.current_position = 0
         self.current_channel = 0
         self._loaded = False
+        self._current_file = None
 
     def load_file(self, filename: str, channel: int = 0) -> bool:
         """
@@ -87,6 +88,7 @@ class RealDataLoader:
 
             self.current_position = 0
             self._loaded = True
+            self._current_file = filename  # Store for multi-channel access
 
             return True
 
@@ -179,6 +181,109 @@ class RealDataLoader:
             "duration_seconds": len(self.data) / self.sampling_rate if self.data is not None else 0,
             "current_channel": self.channel_names[self.current_channel] if self.channel_names else "none"
         }
+
+    def find_channel_by_name(self, name: str) -> Optional[int]:
+        """
+        Find channel index by electrode name (e.g., 'C3', 'C4', 'Fc1').
+
+        Args:
+            name: Electrode name to search for (case-insensitive partial match)
+
+        Returns:
+            Channel index if found, None otherwise
+        """
+        if not self.channel_names:
+            return None
+
+        name_upper = name.upper()
+        for i, ch_name in enumerate(self.channel_names):
+            # Match if the name is contained in the channel name (handles variations like "Fc1.", "FC1", etc.)
+            if name_upper in ch_name.upper():
+                return i
+        return None
+
+    def get_multichannel_chunk(
+        self,
+        channels: List[int],
+        chunk_duration_ms: float = 500.0
+    ) -> Tuple[np.ndarray, dict]:
+        """
+        Get chunk from multiple channels simultaneously.
+
+        This is essential for motor imagery classification (C3/C4) and
+        multi-channel waterfall visualization.
+
+        Args:
+            channels: List of channel indices to read
+            chunk_duration_ms: Duration of chunk in milliseconds
+
+        Returns:
+            signals: np.ndarray of shape [n_channels, n_samples]
+            metadata: dict with channel names and sample rate
+        """
+        if not self._loaded:
+            return np.zeros((len(channels), 8)), {"error": "no_data"}
+
+        try:
+            import pyedflib
+
+            # Reconstruct filepath from stored info
+            # We need to reload the file to access multiple channels
+            filepath = self.data_dir / self._current_file
+            edf = pyedflib.EdfReader(str(filepath))
+
+            n_samples = int(chunk_duration_ms * self.sampling_rate / 1000.0)
+            n_samples = max(1, n_samples)
+
+            # Handle wraparound
+            if self.current_position + n_samples > edf.getNSamples()[0]:
+                self.current_position = 0
+
+            signals = np.zeros((len(channels), n_samples), dtype=np.float32)
+            channel_names = []
+
+            for i, ch in enumerate(channels):
+                if ch < edf.signals_in_file:
+                    # Read the full signal for this channel then slice
+                    full_signal = edf.readSignal(ch)
+
+                    # Slice to the current position
+                    start = self.current_position
+                    end = min(start + n_samples, len(full_signal))
+                    signals[i, :end-start] = full_signal[start:end]
+
+                    # Convert to microvolts if needed
+                    if np.abs(signals[i]).max() < 0.01:
+                        signals[i] *= 1e6
+
+                    channel_names.append(self.channel_names[ch])
+                else:
+                    channel_names.append(f"ch{ch}")
+
+            edf.close()
+
+            # Update position for next call
+            self.current_position += n_samples
+
+            metadata = {
+                "channels": channel_names,
+                "channel_indices": channels,
+                "sample_rate": self.sampling_rate,
+                "signal_type": "eeg",
+                "n_samples": n_samples,
+                "chunk_duration_ms": chunk_duration_ms
+            }
+
+            return signals, metadata
+
+        except Exception as e:
+            print(f"Error reading multi-channel data: {e}")
+            return np.zeros((len(channels), 8)), {"error": str(e)}
+
+    def load_file_keep_path(self, filename: str, channel: int = 0) -> bool:
+        """Load file and store filename for multi-channel access."""
+        self._current_file = filename
+        return self.load_file(filename, channel)
 
 
 def generate_real_chunk(

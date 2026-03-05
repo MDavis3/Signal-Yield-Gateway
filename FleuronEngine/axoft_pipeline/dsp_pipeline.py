@@ -325,6 +325,202 @@ def iir_highpass_filter(
     return output, buffer
 
 
+def iir_notch_filter(
+    signal: np.ndarray,
+    notch_freq: float = 60.0,
+    Q: float = 30.0,
+    sample_rate: float = 160.0,
+    buffer: dict = None
+) -> Tuple[np.ndarray, dict]:
+    """
+    IIR notch filter for power line interference removal.
+
+    Removes 60Hz (US) or 50Hz (EU) power line interference while
+    preserving all other frequencies. Uses a biquad (2nd order IIR)
+    filter for O(1) per-sample complexity - thermally efficient.
+
+    Parameters:
+    -----------
+    signal : np.ndarray
+        Input signal to filter
+    notch_freq : float
+        Center frequency to remove (60Hz US, 50Hz EU)
+    Q : float
+        Quality factor - higher = narrower notch (30 = typical)
+        Q=30 at 60Hz removes ~58-62Hz
+    sample_rate : float
+        Sampling rate in Hz (160Hz for PhysioNet EEG)
+    buffer : dict, optional
+        State buffer for streaming: {'x': [x1, x2], 'y': [y1, y2]}
+
+    Returns:
+    --------
+    output : np.ndarray
+        Filtered signal with notch frequency removed
+    buffer : dict
+        Updated buffer for next chunk
+    """
+    # Check Nyquist - can't filter above Nyquist frequency
+    if notch_freq >= sample_rate / 2:
+        # Can't apply notch filter - just return signal unchanged
+        if buffer is None:
+            buffer = {'x': [0.0, 0.0], 'y': [0.0, 0.0]}
+        return signal.astype(np.float32), buffer
+
+    # Compute biquad coefficients for notch filter
+    w0 = 2 * np.pi * notch_freq / sample_rate
+    alpha = np.sin(w0) / (2 * Q)
+
+    b0 = 1.0
+    b1 = -2 * np.cos(w0)
+    b2 = 1.0
+    a0 = 1 + alpha
+    a1 = -2 * np.cos(w0)
+    a2 = 1 - alpha
+
+    # Normalize coefficients
+    b = np.array([b0/a0, b1/a0, b2/a0])
+    a = np.array([1.0, a1/a0, a2/a0])
+
+    # Initialize buffer
+    if buffer is None:
+        buffer = {'x': [0.0, 0.0], 'y': [0.0, 0.0]}
+
+    # Apply filter (direct form II transposed)
+    output = np.zeros(len(signal), dtype=np.float32)
+    x_hist = list(buffer['x'])
+    y_hist = list(buffer['y'])
+
+    for i in range(len(signal)):
+        x = float(signal[i])
+        y = b[0]*x + b[1]*x_hist[0] + b[2]*x_hist[1] - a[1]*y_hist[0] - a[2]*y_hist[1]
+        output[i] = y
+        x_hist[1], x_hist[0] = x_hist[0], x
+        y_hist[1], y_hist[0] = y_hist[0], y
+
+    buffer['x'] = x_hist
+    buffer['y'] = y_hist
+    return output, buffer
+
+
+def bandpass_filter_simple(
+    signal: np.ndarray,
+    f_low: float,
+    f_high: float,
+    sample_rate: float = 160.0
+) -> np.ndarray:
+    """
+    Simple cascaded IIR bandpass filter.
+
+    Combines a highpass filter (to remove frequencies below f_low)
+    with a lowpass filter (to remove frequencies above f_high).
+    Both are single-pole IIR filters for O(1) per-sample efficiency.
+
+    Parameters:
+    -----------
+    signal : np.ndarray
+        Input signal
+    f_low : float
+        Low cutoff frequency in Hz
+    f_high : float
+        High cutoff frequency in Hz
+    sample_rate : float
+        Sampling rate in Hz
+
+    Returns:
+    --------
+    np.ndarray
+        Bandpass filtered signal
+    """
+    # Highpass at f_low
+    hp, _ = iir_highpass_filter(signal, f_low, sample_rate)
+
+    # Lowpass at f_high
+    RC = 1.0 / (2.0 * np.pi * f_high)
+    dt = 1.0 / sample_rate
+    alpha = dt / (RC + dt)
+
+    lp = np.zeros(len(hp), dtype=np.float32)
+    lp[0] = hp[0]
+    for i in range(1, len(hp)):
+        lp[i] = alpha * hp[i] + (1 - alpha) * lp[i-1]
+
+    return lp
+
+
+def calculate_frequency_bands(
+    signal: np.ndarray,
+    sample_rate: float = 160.0
+) -> Dict[str, float]:
+    """
+    Calculate power in standard EEG frequency bands.
+
+    Uses simple bandpass filtering + variance for thermal efficiency
+    (no FFT required). This is the standard approach for real-time
+    BCI applications where FFT overhead is prohibitive.
+
+    Frequency Bands:
+    ----------------
+    - Delta (0.5-4 Hz): Deep sleep, unconscious states
+    - Theta (4-8 Hz): Drowsy/meditative, memory processing
+    - Alpha (8-12 Hz): Relaxed/eyes closed - KEY FOR MOTOR CORTEX
+    - Beta (12-30 Hz): Active thinking - KEY FOR MOTOR IMAGERY
+    - Gamma (30-45 Hz): Cognitive processing, attention
+
+    Clinical Significance:
+    ----------------------
+    - Motor imagery: Alpha/Beta modulation over C3/C4
+    - Left hand imagery: C3 (right motor cortex) beta suppression
+    - Right hand imagery: C4 (left motor cortex) beta suppression
+
+    Parameters:
+    -----------
+    signal : np.ndarray
+        Input signal (centered, in μV)
+    sample_rate : float
+        Sampling rate in Hz
+
+    Returns:
+    --------
+    Dict[str, float]
+        Dictionary with keys: delta_power, theta_power, alpha_power,
+        beta_power, gamma_power, total_power
+    """
+    # Define standard EEG frequency bands
+    bands = {
+        'delta': (0.5, 4.0),
+        'theta': (4.0, 8.0),
+        'alpha': (8.0, 12.0),
+        'beta': (12.0, 30.0),
+        'gamma': (30.0, min(45.0, sample_rate/2 - 1))  # Respect Nyquist
+    }
+
+    result = {}
+
+    for band_name, (f_low, f_high) in bands.items():
+        # Skip bands that can't be computed at this sample rate
+        if f_low >= sample_rate / 2:
+            result[f'{band_name}_power'] = 0.0
+            continue
+
+        # Adjust f_high to respect Nyquist
+        f_high_adj = min(f_high, sample_rate / 2 - 1)
+        if f_high_adj <= f_low:
+            result[f'{band_name}_power'] = 0.0
+            continue
+
+        # Apply bandpass filter
+        filtered = bandpass_filter_simple(signal, f_low, f_high_adj, sample_rate)
+
+        # Power = variance (mean-squared amplitude)
+        result[f'{band_name}_power'] = float(np.var(filtered))
+
+    # Total signal power
+    result['total_power'] = float(np.var(signal))
+
+    return result
+
+
 def smooth_signal_ma(
     signal: np.ndarray,
     window_size: int = 40
@@ -602,6 +798,18 @@ def process_signal(
             buffer=None  # Polyfit is stateless
         )
 
+    # Step 1.5: Optional 60Hz notch filter (power line interference removal)
+    if config.get('apply_notch_filter', False):
+        sample_rate = config.get('sample_rate', 160.0)
+        centered_signal, notch_buffer = iir_notch_filter(
+            centered_signal,
+            notch_freq=config.get('notch_freq', 60.0),
+            Q=config.get('notch_Q', 30.0),
+            sample_rate=sample_rate,
+            buffer=buffer.get('notch')
+        )
+        buffer['notch'] = notch_buffer
+
     # Step 2: Detect neural spikes (O(n) linear pass)
     # CRITICAL: Use CENTERED signal for accurate spike detection
     # Spike detection MUST happen on unsmoothed data for accuracy
@@ -658,6 +866,14 @@ def process_signal(
         'processing_mode': processing_mode,   # 'eeg' or 'intracortical'
         'signal_type': config.get('signal_type', 'synthetic')  # For metrics calibration
     }
+
+    # Calculate frequency bands (EEG mode only - clinically relevant)
+    if processing_mode == 'eeg' and config.get('calculate_frequency_bands', True):
+        sample_rate = config.get('sample_rate', 160.0)
+        metadata['frequency_bands'] = calculate_frequency_bands(
+            centered_signal,
+            sample_rate
+        )
 
     # Measure processing latency
     end_time = time.perf_counter()
