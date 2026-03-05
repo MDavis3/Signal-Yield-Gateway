@@ -984,19 +984,22 @@ elif view_mode == "Motor Imagery BCI":
                 st.markdown("### Mu Band Power (8-12Hz) - Motor Cortex Comparison")
 
                 fig_mu = go.Figure()
+                max_power = max(result['c3_mu_power'], result['c4_mu_power'])
                 fig_mu.add_trace(go.Bar(
                     x=['C3 (Left Motor Cortex)', 'C4 (Right Motor Cortex)'],
                     y=[result['c3_mu_power'], result['c4_mu_power']],
                     marker_color=['#3498db', '#e74c3c'],
                     text=[f"{result['c3_mu_power']:.2f}", f"{result['c4_mu_power']:.2f}"],
-                    textposition='outside'
+                    textposition='inside',
+                    textfont=dict(color='white', size=14)
                 ))
 
                 fig_mu.update_layout(
                     yaxis_title="Power (μV²)",
                     template="plotly_dark",
                     height=300,
-                    showlegend=False
+                    showlegend=False,
+                    yaxis=dict(range=[0, max_power * 1.15])  # 15% headroom
                 )
 
                 st.plotly_chart(fig_mu, use_container_width=True)
