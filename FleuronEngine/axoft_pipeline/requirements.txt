@@ -10,6 +10,9 @@ pandas>=2.0.0,<3.0.0          # Data manipulation (optional, for future analytic
 streamlit>=1.30.0,<2.0.0      # Interactive web dashboard framework
 plotly>=5.18.0,<6.0.0         # Interactive plotting (dual-trace waveforms, stability charts)
 
+# Real Neural Data Loading
+pyedflib>=0.1.30              # EDF/BDF file reading (lightweight, no scipy conflicts)
+
 # Optional - For Production Redis Backend
 # Uncomment these if deploying with Redis storage backend:
 # redis>=5.0.0,<6.0.0         # Redis client for production storage

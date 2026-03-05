@@ -21,6 +21,7 @@ import time
 # Import our modular pipeline components
 from data_simulator import generate_synthetic_chunk, reset_drift_phase
 from dsp_pipeline import process_signal_streaming, reset_streaming_buffer
+from real_data_loader import RealDataLoader, generate_real_chunk
 from metrics_engine import (
     calculate_signal_yield,
     calculate_active_channels,
@@ -71,6 +72,26 @@ def initialize_session_state():
     if 'latest_metrics' not in st.session_state:
         st.session_state.latest_metrics = {}
 
+    # For same-scale visualization
+    if 'centered_signal_uv' not in st.session_state:
+        st.session_state.centered_signal_uv = None
+
+    if 'raw_dc_offset' not in st.session_state:
+        st.session_state.raw_dc_offset = 0.0
+
+    # Real data loader
+    if 'real_data_loader' not in st.session_state:
+        st.session_state.real_data_loader = RealDataLoader("../data/physionet")
+
+    if 'use_real_data' not in st.session_state:
+        st.session_state.use_real_data = False
+
+    if 'real_data_file' not in st.session_state:
+        st.session_state.real_data_file = None
+
+    if 'real_data_channel' not in st.session_state:
+        st.session_state.real_data_channel = 0
+
 
 initialize_session_state()
 
@@ -109,6 +130,89 @@ with st.sidebar:
             st.rerun()
 
     st.caption("Presets set noise, drift, and alpha for optimal visualization")
+
+    st.markdown("---")
+    st.subheader("📊 Data Source")
+
+    # Toggle between synthetic and real data
+    data_source = st.radio(
+        "Select Data Source",
+        options=["Synthetic (Simulated)", "Real (PhysioNet EEG)"],
+        index=0 if not st.session_state.use_real_data else 1,
+        help="Use synthetic data for demos or real PhysioNet EEG recordings"
+    )
+    st.session_state.use_real_data = (data_source == "Real (PhysioNet EEG)")
+
+    # Real data file selection
+    if st.session_state.use_real_data:
+        available_files = st.session_state.real_data_loader.get_available_files()
+
+        if available_files:
+            selected_file = st.selectbox(
+                "EDF File",
+                options=available_files,
+                help="Select recording file (R01=baseline, R03/R07/R11=left/right motor imagery)"
+            )
+
+            # Load file if changed
+            if selected_file != st.session_state.real_data_file:
+                st.session_state.real_data_file = selected_file
+                st.session_state.real_data_loader.load_file(selected_file, channel=0)
+
+            # Channel selection (PhysioNet has 64 channels)
+            channel_names = st.session_state.real_data_loader.get_channel_names()
+            if channel_names:
+                selected_channel = st.selectbox(
+                    "EEG Channel",
+                    options=list(range(len(channel_names))),
+                    format_func=lambda x: channel_names[x] if x < len(channel_names) else f"Ch {x}",
+                    help="Select EEG electrode (C3/C4 recommended for motor cortex)"
+                )
+                if selected_channel != st.session_state.real_data_channel:
+                    st.session_state.real_data_channel = selected_channel
+                    st.session_state.real_data_loader.load_file(
+                        st.session_state.real_data_file,
+                        channel=selected_channel
+                    )
+
+            # Show data info
+            info = st.session_state.real_data_loader.get_info()
+            if info.get('loaded'):
+                st.caption(f"📍 {info['current_channel']} | {info['duration_seconds']:.1f}s @ {info['sampling_rate']}Hz")
+        else:
+            st.warning("No EDF files found in data/physionet/")
+
+    st.markdown("---")
+    st.subheader("🔧 Processing Mode")
+
+    # Processing mode selection (EEG vs Intracortical)
+    if st.session_state.use_real_data:
+        processing_mode = st.radio(
+            "Algorithm",
+            options=["EEG (Highpass Filter)", "Intracortical (Polynomial)"],
+            index=0,  # Default to EEG for real data
+            help="**EEG mode**: Preserves brain rhythms (8-12Hz alpha), removes only DC drift. "
+                 "**Intracortical mode**: Removes all low-frequency content (for spike trains)."
+        )
+        mode_key = "eeg" if "EEG" in processing_mode else "intracortical"
+
+        # Highpass cutoff slider (only for EEG mode)
+        if mode_key == "eeg":
+            highpass_cutoff = st.slider(
+                "Highpass Cutoff (Hz)",
+                min_value=0.1,
+                max_value=2.0,
+                value=0.5,
+                step=0.1,
+                help="Frequencies below this are removed as drift. 0.5Hz preserves all brain rhythms (alpha, theta, beta)."
+            )
+        else:
+            highpass_cutoff = 0.5  # Default, not used
+    else:
+        # Synthetic data always uses intracortical mode
+        mode_key = "intracortical"
+        highpass_cutoff = 0.5
+        st.caption("Using polynomial detrending for synthetic data")
 
     st.markdown("---")
     st.subheader("🔬 Signal Parameters")
@@ -174,6 +278,19 @@ with st.sidebar:
         help="Rolling window for chronic stability index"
     )
 
+    # Chunk duration for visualization (longer = more visible cycles)
+    if st.session_state.use_real_data:
+        chunk_duration_ms = st.slider(
+            "Chunk Duration (ms)",
+            min_value=50,
+            max_value=1000,
+            value=500,  # Default 500ms for EEG (shows ~5 alpha cycles)
+            step=50,
+            help="Longer chunks show more alpha cycles. 500ms recommended for clear visualization of drift removal."
+        )
+    else:
+        chunk_duration_ms = 50.0  # Keep 50ms for synthetic data (40kHz)
+
     st.markdown("---")
     st.subheader("👁️ View Persona")
 
@@ -216,24 +333,49 @@ with st.sidebar:
 # ============================================================================
 
 def process_chunk():
-    """Generate synthetic chunk and run through DSP pipeline."""
+    """Generate chunk (synthetic or real) and run through DSP pipeline with dual-mode support."""
 
-    # Generate synthetic data from mock hardware
-    raw_chunk = generate_synthetic_chunk(
-        duration_ms=50.0,
-        sample_rate=40000,
-        noise_level=noise_level,
-        drift_severity=drift_severity,
-        spike_rate=20.0
-    )
+    # Choose data source and build appropriate config
+    if st.session_state.use_real_data and st.session_state.real_data_loader.get_info().get('loaded'):
+        # Use REAL neural data from PhysioNet
+        raw_chunk, chunk_meta = generate_real_chunk(
+            st.session_state.real_data_loader,
+            chunk_duration_ms=chunk_duration_ms,  # Use slider value
+            add_synthetic_drift=True,  # Add drift to demonstrate removal
+            drift_amplitude=drift_severity * 50,  # Scale drift to severity slider
+            native_rate=True  # Use native 160Hz sample rate
+        )
 
-    # Process through DSP pipeline
-    config = {
-        'poly_order': poly_order,  # Polynomial order for detrending (1 = linear)
-        'tanh_alpha': tanh_alpha,
-        'spike_threshold': 5.0,  # Lowered from 20.0 to detect 100μV spikes (derivative ≈8.3μV)
-        'smoothing_window': smoothing_window  # Optional (default 0, not needed with polyfit)
-    }
+        # Build config for real EEG data
+        config = {
+            'processing_mode': mode_key,  # 'eeg' or 'intracortical'
+            'sample_rate': chunk_meta.get('sample_rate', 160.0),
+            'highpass_cutoff': highpass_cutoff,
+            'poly_order': poly_order,
+            'tanh_alpha': tanh_alpha,
+            'spike_threshold': 5.0,
+            'smoothing_window': smoothing_window,
+            'signal_type': chunk_meta.get('signal_type', 'eeg')
+        }
+    else:
+        # Generate synthetic data from mock hardware
+        raw_chunk = generate_synthetic_chunk(
+            duration_ms=chunk_duration_ms,  # Use variable (50ms for synthetic)
+            sample_rate=40000,
+            noise_level=noise_level,
+            drift_severity=drift_severity,
+            spike_rate=20.0
+        )
+
+        # Build config for synthetic data (always intracortical mode)
+        config = {
+            'processing_mode': 'intracortical',
+            'poly_order': poly_order,
+            'tanh_alpha': tanh_alpha,
+            'spike_threshold': 5.0,
+            'smoothing_window': smoothing_window,
+            'signal_type': 'synthetic'
+        }
 
     cleaned_tensor, latency_ms, metadata = process_signal_streaming(raw_chunk, config)
 
@@ -246,9 +388,16 @@ def process_chunk():
     st.session_state.storage.save_tensor(cleaned_tensor, yield_pct, metadata)
     st.session_state.stability_tracker.add_yield(yield_pct)
 
+    # Calculate centered signal in μV (for same-scale visualization)
+    # This shows what the highpass filter does: removes DC offset
+    raw_mean = float(np.mean(raw_chunk))
+    centered_signal_uv = raw_chunk - raw_mean  # Centered at 0 in μV
+
     # Update session state for UI rendering
     st.session_state.raw_signal = raw_chunk
     st.session_state.cleaned_signal = cleaned_tensor
+    st.session_state.centered_signal_uv = centered_signal_uv  # For same-scale plot
+    st.session_state.raw_dc_offset = raw_mean  # For DC indicator
     st.session_state.latest_metrics = {
         'latency_ms': latency_ms,
         'yield_pct': yield_pct,
@@ -270,14 +419,25 @@ if st.session_state.is_playing or st.button("Generate", key="hidden_generate", d
 st.title("🧠 Axoft Signal Yield & Clinical Translation Gateway")
 
 # ============================================================================
-# Synthetic Data Warning Banner
+# Data Source Banner
 # ============================================================================
-st.warning(
-    "⚠️ **DEMO MODE**: This dashboard uses **synthetic neural data** generated from "
-    "mathematical models (Poisson spike trains, sinusoidal drift, Gaussian noise). "
-    "Real patient data validation is required before clinical use.",
-    icon="⚠️"
-)
+if st.session_state.use_real_data:
+    mode_description = "IIR Highpass (preserves brain rhythms)" if mode_key == "eeg" else "Polynomial Detrending"
+    st.success(
+        f"✅ **REAL DATA MODE**: Processing **actual PhysioNet EEG recordings** "
+        f"(File: {st.session_state.real_data_file or 'None'}, "
+        f"Channel: {st.session_state.real_data_loader.get_info().get('current_channel', 'N/A')}) | "
+        f"**Algorithm**: {mode_description}" +
+        (f" @ {highpass_cutoff}Hz cutoff" if mode_key == "eeg" else ""),
+        icon="✅"
+    )
+else:
+    st.warning(
+        "⚠️ **DEMO MODE**: This dashboard uses **synthetic neural data** generated from "
+        "mathematical models (Poisson spike trains, sinusoidal drift, Gaussian noise). "
+        "Real patient data validation is required before clinical use.",
+        icon="⚠️"
+    )
 
 # ============================================================================
 # Parameter Validation Warning
@@ -299,70 +459,135 @@ if view_mode == "R&D Engineer View":
 
     st.markdown("### 🔬 R&D Engineer View")
 
+    # Latency and DC Offset metrics side by side
     if st.session_state.latest_metrics:
-        st.metric(
-            "Pipeline Latency",
-            f"{st.session_state.latest_metrics['latency_ms']:.2f} ms",
-            delta=f"Budget: <20ms" if st.session_state.latest_metrics['latency_ms'] < 20 else "OVER BUDGET",
-            delta_color="normal" if st.session_state.latest_metrics['latency_ms'] < 20 else "inverse"
-        )
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric(
+                "Pipeline Latency",
+                f"{st.session_state.latest_metrics['latency_ms']:.2f} ms",
+                delta=f"Budget: <20ms" if st.session_state.latest_metrics['latency_ms'] < 20 else "OVER BUDGET",
+                delta_color="normal" if st.session_state.latest_metrics['latency_ms'] < 20 else "inverse"
+            )
+        with col2:
+            # DC Offset Indicator - shows value of drift removal
+            dc_offset = st.session_state.raw_dc_offset
+            st.metric(
+                "DC Offset Removed",
+                f"{dc_offset:.1f} μV",
+                delta="→ Centered at 0",
+                delta_color="normal"
+            )
+        with col3:
+            if st.session_state.raw_signal is not None:
+                raw_range = float(np.max(st.session_state.raw_signal) - np.min(st.session_state.raw_signal))
+                st.metric(
+                    "Signal Range",
+                    f"{raw_range:.1f} μV",
+                    delta="Peak-to-peak"
+                )
 
-    if st.session_state.raw_signal is not None and st.session_state.cleaned_signal is not None:
-        # Create dual Y-axis plot to properly visualize both scales
-        # Raw signal: -40 to 120 μV (primary Y-axis, left)
-        # Tanh normalized: -1 to 1 (secondary Y-axis, right)
-        fig = make_subplots(specs=[[{"secondary_y": True}]])
+    if st.session_state.raw_signal is not None and st.session_state.centered_signal_uv is not None:
+        # ====================================================================
+        # SAME Y-SCALE VISUALIZATION
+        # Shows raw signal WITH DC offset vs centered signal (offset removed)
+        # This clearly demonstrates what the highpass filter does!
+        # ====================================================================
+        fig = go.Figure()
 
-        sample_indices = np.arange(len(st.session_state.raw_signal))
+        num_samples = len(st.session_state.raw_signal)
 
-        # Raw signal trace (red) - PRIMARY Y-AXIS (left)
+        # Convert sample indices to time in milliseconds for better readability
+        if st.session_state.use_real_data:
+            info = st.session_state.real_data_loader.get_info()
+            sample_rate = info.get('sampling_rate', 160.0)
+            time_ms = np.arange(num_samples) / sample_rate * 1000
+            x_axis = time_ms
+            x_label = "Time (ms)"
+            duration_ms = chunk_duration_ms
+        else:
+            sample_rate = 40000
+            time_ms = np.arange(num_samples) / sample_rate * 1000
+            x_axis = time_ms
+            x_label = "Time (ms)"
+            duration_ms = 50.0
+
+        # Raw signal trace (red) - with DC offset
         fig.add_trace(
             go.Scatter(
-                x=sample_indices,
+                x=x_axis,
                 y=st.session_state.raw_signal,
                 mode='lines',
-                name='Raw Drifting Signal (μV)',
-                line=dict(color='red', width=1),
-                opacity=0.7
-            ),
-            secondary_y=False  # Primary Y-axis (left)
+                name=f'Raw Signal (DC offset: {st.session_state.raw_dc_offset:.1f}μV)',
+                line=dict(color='red', width=1.5),
+                opacity=0.8
+            )
         )
 
-        # Cleaned signal trace (cyan) - SECONDARY Y-AXIS (right)
+        # Centered signal trace (cyan) - DC offset removed
         fig.add_trace(
             go.Scatter(
-                x=sample_indices,
-                y=st.session_state.cleaned_signal,
+                x=x_axis,
+                y=st.session_state.centered_signal_uv,
                 mode='lines',
-                name='Tanh-Normalized Output',
+                name='Centered Signal (DC removed)',
                 line=dict(color='cyan', width=2)
-            ),
-            secondary_y=True  # Secondary Y-axis (right)
+            )
         )
 
-        # Update layout and axes
+        # Add horizontal line at y=0 to show centering
+        fig.add_hline(
+            y=0,
+            line_dash="dash",
+            line_color="white",
+            opacity=0.5,
+            annotation_text="Zero baseline",
+            annotation_position="right"
+        )
+
+        # Add horizontal line at raw DC offset to show original baseline
+        fig.add_hline(
+            y=st.session_state.raw_dc_offset,
+            line_dash="dot",
+            line_color="red",
+            opacity=0.3,
+            annotation_text=f"Original DC: {st.session_state.raw_dc_offset:.1f}μV",
+            annotation_position="left"
+        )
+
+        # Update layout
         fig.update_layout(
-            title="Raw vs. Cleaned Signal Comparison (50ms Chunk @ 40kHz)",
-            xaxis_title="Sample Index (0-2000)",
+            title=f"DC Drift Removal Demonstration ({duration_ms:.0f}ms @ {sample_rate:.0f}Hz) - Same Y-Scale",
+            xaxis_title=x_label,
+            yaxis_title="Amplitude (μV)",
             template="plotly_dark",
             height=500,
             hovermode='x unified',
-            legend=dict(x=0.01, y=0.99)
+            legend=dict(x=0.01, y=0.99),
+            # Add annotation explaining what's shown
+            annotations=[
+                dict(
+                    x=0.5,
+                    y=-0.12,
+                    xref='paper',
+                    yref='paper',
+                    text=f"<b>IIR Highpass filter removes DC drift while preserving brain rhythms</b> | "
+                         f"Samples: {num_samples} | DC removed: {abs(st.session_state.raw_dc_offset):.1f}μV",
+                    showarrow=False,
+                    font=dict(size=11, color='gray')
+                )
+            ]
         )
 
-        # Set Y-axis titles and ranges
-        fig.update_yaxes(
-            title_text="Raw Amplitude (μV)",
-            secondary_y=False  # Primary Y-axis (left)
-        )
+        st.plotly_chart(fig, use_container_width=True)
 
-        fig.update_yaxes(
-            title_text="Tanh Normalized [-1, 1]",
-            range=[-1.2, 1.2],  # STRICTLY LOCK to [-1.2, 1.2]
-            secondary_y=True  # Secondary Y-axis (right)
-        )
-
-        st.plotly_chart(fig, width='stretch')
+        # Add explanation text
+        if st.session_state.use_real_data:
+            st.caption(
+                f"**What you're seeing**: Red = raw EEG with electrode drift (DC offset: {st.session_state.raw_dc_offset:.1f}μV). "
+                f"Cyan = same signal centered at 0μV after highpass filtering. "
+                f"The **brain rhythms (alpha/theta) are preserved** - only the DC baseline drift is removed."
+            )
 
 else:
     # ========================================================================
@@ -426,23 +651,49 @@ else:
             showlegend=True
         ))
 
-        # ±2σ confidence band - calculated from SMOOTHED yields for statistical consistency
-        # Since we're plotting the EMA smoothed line, the envelope should reflect its variance
+        # ±2σ confidence band - only show after enough data accumulated
+        # This prevents the "triangle artifact" that appears when few data points exist
         smoothed_array = np.array(smoothed_yield_history)
-        rolling_mean = np.convolve(smoothed_array, np.ones(min(stability_window, len(smoothed_array))) / min(stability_window, len(smoothed_array)), mode='same')
-        smoothed_std = np.std(smoothed_array[-min(stability_window, len(smoothed_array)):])
-        upper_bound = rolling_mean + 2 * smoothed_std
-        lower_bound = rolling_mean - 2 * smoothed_std
 
-        fig.add_trace(go.Scatter(
-            x=np.concatenate([epoch_indices, epoch_indices[::-1]]),
-            y=np.concatenate([upper_bound, lower_bound[::-1]]),
-            fill='toself',
-            fillcolor='rgba(135, 206, 250, 0.2)',
-            line=dict(color='rgba(255,255,255,0)'),
-            name='±2σ Envelope',
-            showlegend=True
-        ))
+        # Only show envelope after at least 20 epochs (enough for stable statistics)
+        min_epochs_for_envelope = 20
+        if len(smoothed_array) >= min_epochs_for_envelope:
+            # Use a fixed window size for consistent envelope calculation
+            window = min(stability_window, len(smoothed_array))
+            kernel = np.ones(window) / window
+            rolling_mean = np.convolve(smoothed_array, kernel, mode='same')
+
+            # Calculate TRUE rolling std (per-epoch) to avoid expanding wedge artifact
+            # This ensures envelope width stays consistent across all epochs
+            def calculate_rolling_std(arr, win):
+                """Calculate rolling standard deviation for each epoch."""
+                result = np.zeros(len(arr))
+                for i in range(len(arr)):
+                    start = max(0, i - win + 1)
+                    chunk = arr[start:i + 1]
+                    result[i] = np.std(chunk) if len(chunk) > 1 else 0.0
+                return result
+
+            rolling_std_values = calculate_rolling_std(smoothed_array, window)
+            upper_bound = rolling_mean + 2 * rolling_std_values
+            lower_bound = rolling_mean - 2 * rolling_std_values
+
+            # Clip bounds to valid range
+            upper_bound = np.clip(upper_bound, 0, 105)
+            lower_bound = np.clip(lower_bound, 0, 105)
+
+            fig.add_trace(go.Scatter(
+                x=np.concatenate([epoch_indices, epoch_indices[::-1]]),
+                y=np.concatenate([upper_bound, lower_bound[::-1]]),
+                fill='toself',
+                fillcolor='rgba(135, 206, 250, 0.2)',
+                line=dict(color='rgba(255,255,255,0)'),
+                name='±2σ Envelope',
+                showlegend=True
+            ))
+        else:
+            # Show accumulation message instead of broken envelope
+            st.caption(f"Accumulating data... ({len(smoothed_array)}/{min_epochs_for_envelope} epochs for stability envelope)")
 
         fig.update_layout(
             title=f"Chronic Stability Index (Rolling {stability_window} Epoch Window)",

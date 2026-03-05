@@ -85,6 +85,36 @@ def calculate_signal_yield(
     """
 
     # --------------------------------------------------
+    # Signal Type Detection - Adaptive Thresholds
+    # --------------------------------------------------
+    # Different signal types have different statistical characteristics:
+    # - 'synthetic'/'intracortical': Spike trains with controlled variance
+    # - 'eeg': Continuous oscillations with higher natural variance
+    signal_type = metadata.get('signal_type', 'synthetic')
+
+    if signal_type == 'eeg':
+        # EEG-calibrated thresholds (real PhysioNet data)
+        # EEG has continuous oscillations (8-12Hz alpha) with higher variance
+        optimal_variance = 800.0    # Higher for continuous brain rhythms
+        min_variance = 50.0         # EEG rarely goes this low
+        max_variance = 5000.0       # EEG can have high variance naturally
+        variance_sigma = 2000.0     # Very wide tolerance for EEG
+        optimal_crossing_count = 300.0   # Fewer discrete crossings in EEG
+        min_crossing_count = 20.0
+        max_crossing_count = 1000.0
+        max_acceptable_shift = 150.0  # EEG has more baseline variation
+    else:
+        # Synthetic/intracortical thresholds (existing, well-calibrated)
+        optimal_variance = 120.0    # Sweet spot for spike trains
+        min_variance = 30.0         # Below this = likely dead channel
+        max_variance = 2000.0       # Above this = severe artifact
+        variance_sigma = 1200.0     # Standard tolerance
+        optimal_crossing_count = 1100.0   # More crossings from spikes
+        min_crossing_count = 50.0
+        max_crossing_count = 2000.0
+        max_acceptable_shift = 80.0  # Tighter tolerance for synthetic
+
+    # --------------------------------------------------
     # Component 1: Variance Health Score (40% weight)
     # --------------------------------------------------
     # Healthy neural data has variance in a specific range
@@ -93,22 +123,7 @@ def calculate_signal_yield(
     #
     # **CRITICAL FIX**: Now evaluating PRE-tanh centered signal variance (in μV²)
     # This decouples metrics from the aesthetic Tanh Alpha slider
-    #
-    # Expected variance ranges for PRE-tanh centered signal (after baseline drift removal):
-    # - Background noise: ±10-20 μV (1σ) → variance = σ² = 100-400 μV²
-    # - Neural spikes: 50-150 μV peaks (5-10σ above noise)
-    # - Ideal conditions (drift=0.15, noise=0.15): variance ≈ 200-400 μV²
-    # - Clean signal with spikes: variance ≈ 300-600 μV²
-    # - Moderate drift/noise: variance ≈ 400-800 μV²
-    # - Dead channel: variance < 50 μV²
-    # - Severe artifact: variance > 2000 μV²
     variance = metadata['variance']
-
-    # Recalibrated thresholds for PRE-tanh signal in microvolts²
-    # **FIX v4**: Further reduced optimal_variance for VERY clean signals (low drift/noise)
-    optimal_variance = 120.0    # Sweet spot for ULTRA-CLEAN biological signal with spikes (was 200, original 400)
-    min_variance = 30.0         # Below this = likely dead channel (was 50)
-    max_variance = 2000.0       # Above this = severe artifact or saturation
 
     if variance < min_variance:
         variance_score = 0.0  # Dead channel
@@ -116,31 +131,16 @@ def calculate_signal_yield(
         variance_score = 30.0  # Severe artifact (but still recording)
     else:
         # Gaussian scoring: peak at optimal_variance, drops off on both sides
-        # **FIX v4**: EXTREMELY wide tolerance (sigma = 1200, was 800) to accommodate full range
-        # This prevents penalizing BOTH ultra-clean (variance~80) AND noisy (variance~800) signals
-        variance_score = 100.0 * np.exp(-((variance - optimal_variance) ** 2) / (2 * 1200.0 ** 2))
+        # Uses adaptive variance_sigma based on signal type
+        variance_score = 100.0 * np.exp(-((variance - optimal_variance) ** 2) / (2 * variance_sigma ** 2))
         # Removed floor to allow natural biological variation in yield
 
     # --------------------------------------------------
     # Component 2: Spike Rate Score (30% weight)
     # --------------------------------------------------
     # NOTE: Our derivative-based detection counts threshold crossings, not discrete spikes.
-    # Expect 50-500 crossings per 50ms chunk (vs 1-5 actual spikes) due to:
-    # - Multiple crossings per spike (rising + falling edges)
-    # - Noise-induced crossings
-    # - Multi-unit activity
-    #
-    # Scoring philosophy: Presence of activity is good, but too little or extreme amounts
-    # indicate dead channel or severe artifact contamination.
-
-    # Expected crossing count for 50ms chunk with derivative detection
-    # NOTE: With lower threshold (5.0μV), we detect more crossings from noise/spikes
-    # **FIX v4**: PARADOX - Clean signals produce MORE crossings (sharper spikes = more edge detections)!
-    # Empirical: Clean signals (drift=0.35, noise=0.25) → ~1200-1300 crossings (sharp spike edges!)
-    #            Noisy signals (drift=0.15, noise=0.15) → ~850-900 crossings (blurred edges)
-    optimal_crossing_count = 1100.0  # crossings per 50ms chunk (was 500, original 850)
-    min_crossing_count = 50.0        # Below this = likely dead channel
-    max_crossing_count = 2000.0      # Above this = severe artifact/noise (raised from 1500)
+    # Thresholds are now adaptive based on signal_type (set above).
+    # EEG has fewer discrete crossings than intracortical spike trains.
 
     if spike_count < min_crossing_count:
         spike_score = 40.0  # Very low activity, concerning but not critical
@@ -159,22 +159,9 @@ def calculate_signal_yield(
     # Measure how much the signal mean deviates from zero
     # After baseline drift removal, mean should be ~0 μV if electrode is stable
     # Large mean shift indicates ongoing baseline drift (DSP not fully correcting)
-    #
-    # **CRITICAL FIX v2**: More forgiving thresholds for MA lag
-    # The moving average has inherent group delay (~18.75ms for 1500-sample window)
-    # When tracking sinusoidal drift (1Hz heartbeat), this creates residual DC offset:
-    # - 1Hz heartbeat, 400μV amplitude → lag offset ≈ 46 μV (expected!)
-    # - This is NOT a fault - it's fundamental DSP physics
-    #
-    # Expected mean shift for PRE-tanh centered signal (after baseline drift removal):
-    # - Ideal MA tracking: mean ≈ 0-20 μV (group delay lag, normal)
-    # - Good MA tracking: mean ≈ 20-50 μV (expected with moderate drift)
-    # - Marginal MA tracking: mean ≈ 50-100 μV (higher drift or noise)
-    # - Poor MA tracking: mean > 100 μV (DSP failing, window too small)
+    # Thresholds are now adaptive based on signal_type (set above).
+    # EEG has more natural baseline variation than synthetic data.
     mean_shift = abs(metadata['mean'])
-
-    # Recalibrated thresholds - MUCH more forgiving to avoid penalizing MA lag
-    max_acceptable_shift = 80.0  # μV (was 30.0, now 2.7× more forgiving)
 
     # Use exponential decay scoring for smooth transition
     if mean_shift > max_acceptable_shift:
