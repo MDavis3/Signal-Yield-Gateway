@@ -39,7 +39,10 @@ A modular DSP pipeline with:
 ### 🔬 R&D Engineer View
 - Real-time waveform visualization (raw drifting signal vs cleaned output)
 - Pipeline latency monitoring (verify <20ms compliance)
-- Dual Y-axis comparison showing baseline drift removal and spike preservation
+- Same Y-scale comparison showing DC offset removal
+- **Frequency Band Power Analysis**: Real-time delta/theta/alpha/beta/gamma distribution
+- **Multi-Channel Waterfall View**: Display 4-8 EEG channels simultaneously
+- **Dual-Mode Comparison**: Side-by-side EEG vs Intracortical processing
 
 ### 🏥 Clinical / FDA View
 - **Live Signal Yield %**: Multi-factor quality score (variance + spike rate + stability)
@@ -47,11 +50,23 @@ A modular DSP pipeline with:
 - **Chronic Stability Index**: Proves no manual recalibration needed over 200+ epochs
 - **System Health Indicator**: Medical-grade error handling (Healthy / Warning / Critical)
 
+### 🧠 Motor Imagery BCI View
+- **Real-time Classification**: LEFT_HAND / RIGHT_HAND / REST prediction
+- **C3/C4 Mu Band Analysis**: 8-12Hz power comparison between motor cortices
+- **Asymmetry Detection**: Detects Event-Related Desynchronization (ERD)
+- **Calibration Support**: Baseline calibration for improved accuracy
+
+### 📊 Data Sources
+- **Synthetic Data**: Simulated spike trains with configurable noise and drift
+- **Real PhysioNet EEG**: 64-channel, 160Hz motor imagery dataset (S001-S109)
+  - Supports all 14 runs per subject (resting, motor execution, motor imagery)
+  - Channel selection from 64 electrodes
+
 ### ▶️ Playback Controls
-- **Play Mode**: Auto-stream 50ms chunks in real-time
+- **Play Mode**: Auto-stream chunks in real-time
 - **Pause Mode**: Freeze state for parameter tweaking
 - **Step Mode**: Single chunk generation for frame-by-frame presentation
-- **Preset Buttons**: Demo / Real / Stress test configurations with optimized parameters
+- **60Hz Notch Filter**: Optional power line interference removal (50/60Hz)
 
 ---
 
@@ -86,34 +101,45 @@ The dashboard will open in your browser at `http://localhost:8501`
 
 ```
 axoft_pipeline/
-├── app.py                     # Streamlit UI (180 lines)
-├── data_simulator.py          # Synthetic hardware data generation (100 lines)
-├── dsp_pipeline.py            # O(n) signal processing (150 lines)
-├── metrics_engine.py          # FDA/clinical business logic (200 lines)
-├── storage_manager.py         # Backend abstraction layer (80 lines)
+├── app.py                     # Streamlit UI with 3 view modes
+├── data_simulator.py          # Synthetic hardware data generation
+├── dsp_pipeline.py            # O(n) signal processing (highpass, notch, detrending)
+├── metrics_engine.py          # FDA/clinical business logic
+├── storage_manager.py         # Backend abstraction layer
+├── real_data_loader.py        # PhysioNet EDF file loader (NEW)
+├── motor_imagery_classifier.py # C3/C4 mu-band BCI classifier (NEW)
+├── test_pipeline.py           # Comprehensive test suite
 └── requirements.txt           # Dependencies
 ```
 
 ### Signal Processing Pipeline
 
 ```
-1. Generate Synthetic Chunk (data_simulator)
-   ↓ 2000 samples @ 40kHz (50ms) with noise, spikes, drift
+1. Data Input (data_simulator OR real_data_loader)
+   ↓ Synthetic: 2000 samples @ 40kHz (50ms)
+   ↓ Real EEG: 80 samples @ 160Hz (500ms) from PhysioNet
 
-2. Polynomial Detrending (dsp_pipeline)
-   ↓ Fit & subtract linear baseline → eliminates drift without ringing
+2. Mode-Appropriate Baseline Removal (dsp_pipeline)
+   ↓ EEG Mode: IIR highpass filter (0.5Hz cutoff, preserves brain rhythms)
+   ↓ Intracortical Mode: Polynomial detrending (removes all low-freq)
 
-3. Derivative Spike Detection
-   ↓ Detect sharp rising edges (~1ms) characteristic of action potentials
+3. Optional 60Hz Notch Filter
+   ↓ Biquad IIR notch for power line interference removal
 
-4. Tanh Normalization
-   ↓ Soft-clip to [-1, 1] with adaptive alpha for visual clarity
+4. Derivative Spike Detection
+   ↓ Detect sharp rising edges characteristic of action potentials
 
-5. Metrics Calculation (metrics_engine)
+5. Tanh Normalization
+   ↓ Soft-clip to [-1, 1] with adaptive alpha
+
+6. Frequency Band Analysis (EEG mode)
+   ↓ Delta (0.5-4Hz), Theta (4-8Hz), Alpha (8-12Hz), Beta (12-30Hz), Gamma (30-45Hz)
+
+7. Metrics Calculation (metrics_engine)
    ↓ Signal Yield % = 40% variance + 30% spike rate + 30% stability
 
-6. Storage & Visualization (storage_manager + app.py)
-   ↓ Dual persona dashboard (R&D / Clinical)
+8. Motor Imagery Classification (optional)
+   ↓ C3/C4 mu-band asymmetry → LEFT_HAND / RIGHT_HAND / REST
 ```
 
 ### Key Algorithms
@@ -246,34 +272,35 @@ yield = 0.40 × variance_score + 0.30 × spike_score + 0.30 × stability_score
 ## Known Limitations
 
 ### What This Project IS
-- ✅ Single-channel signal processing prototype
+- ✅ Multi-channel signal processing prototype
 - ✅ Demonstrates DSP fundamentals and thermal awareness
 - ✅ Shows clinical metrics translation approach
 - ✅ Functional dashboard for technical + clinical audiences
+- ✅ **Validated on real PhysioNet EEG data**
+- ✅ **Basic motor imagery BCI classification**
 
 ### What This Project IS NOT
 - ❌ Production-ready medical device
-- ❌ Validated on real neural data
 - ❌ Regulatory-compliant (IEC 60601, ISO 14708)
 - ❌ Scalable to 10,000 channels (requires parallel architecture)
+- ❌ ML-based classifier (uses simple threshold-based asymmetry detection)
 
 ### Key Assumptions
 
-1. **Synthetic Data Only**: All testing uses simulated neural signals
-   - Poisson spike trains (20 Hz rate)
-   - Sinusoidal baseline drift (1 Hz, variable amplitude)
-   - Gaussian noise (configurable σ)
-   - **Real patient data validation required before clinical use**
+1. **Real + Synthetic Data**:
+   - Synthetic: Poisson spike trains (20 Hz rate) with configurable noise/drift
+   - Real: PhysioNet EEG Motor Movement/Imagery Dataset (64-channel, 160Hz)
+   - **Intracortical spike data validation still required**
 
 2. **Algorithm Simplicity**: DSP prioritizes thermal efficiency over sophistication
-   - Polynomial detrending (vs Butterworth filters)
+   - Single-pole IIR highpass (vs higher-order Butterworth)
+   - Polynomial detrending (vs adaptive filtering)
    - Derivative spike detection (vs template matching / ML sorting)
-   - These are starting points requiring benchmark comparisons
+   - Simple asymmetry classifier (vs CSP + trained ML models)
 
-3. **Single-Channel Processing**: Processes one channel serially
+3. **Multi-Channel Support**: Processes up to 8 channels for visualization
    - Real-time 10k-channel processing requires GPU/FPGA parallelization
-   - Hardware acceleration needed
-   - Power optimization (<1mW per channel)
+   - Current architecture demonstrates scalability approach
 
 ---
 
@@ -335,6 +362,17 @@ For detailed architecture and design rationale, see:
 ---
 
 ## Changelog
+
+### v0.3.0 (2026-03-05)
+- **MAJOR:** Added real PhysioNet EEG data support (64-channel, 160Hz)
+- **NEW:** Motor Imagery BCI view with C3/C4 mu-band classification
+- **NEW:** Frequency band power analysis (delta/theta/alpha/beta/gamma)
+- **NEW:** Multi-channel waterfall view (4-8 channels)
+- **NEW:** 60Hz notch filter for power line interference removal
+- **NEW:** Dual-mode processing comparison (EEG highpass vs Intracortical polynomial)
+- **NEW:** IIR highpass filter for EEG mode (preserves brain rhythms)
+- **IMPROVED:** Signal Yield metrics now adaptive to signal type (EEG vs synthetic)
+- **FIXED:** Motor imagery display now uses raw prediction instead of lagged smoothed value
 
 ### v0.2.1 (2026-03-03)
 - **IMPROVED:** Preset buttons now set optimal alpha values for each scenario
