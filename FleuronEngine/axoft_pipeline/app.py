@@ -959,13 +959,14 @@ elif view_mode == "Motor Imagery BCI":
                 conf = result['confidence']
 
                 # Visual indicator based on prediction
+                # Use raw prediction (not smoothed) so display matches current asymmetry
                 pred_display = {
                     'LEFT_HAND': ('🖐️ LEFT HAND', '#3498db'),
                     'RIGHT_HAND': ('RIGHT HAND 🖐️', '#e74c3c'),
                     'REST': ('😴 REST', '#95a5a6')
                 }
 
-                display_text, color = pred_display.get(smoothed, ('UNKNOWN', '#666'))
+                display_text, color = pred_display.get(pred, ('UNKNOWN', '#666'))
 
                 col1, col2, col3 = st.columns(3)
                 with col1:
