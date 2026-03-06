@@ -1,6 +1,6 @@
-# Axoft Signal Yield & Clinical Translation Gateway - Dependencies
+# BCI Signal Yield & Clinical Translation Gateway - Dependencies
 # ===================================================================
-# Production-grade BCI signal processing pipeline for Axoft
+# Production-grade BCI signal processing pipeline
 
 # Core Data Science & Numerical Computing
 numpy>=1.24.0,<2.0.0          # Vectorized numerical operations, DSP foundation

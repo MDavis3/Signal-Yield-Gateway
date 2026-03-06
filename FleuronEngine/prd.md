@@ -1,11 +1,11 @@
 Product Requirements Document (PRD)
-Project: Fleuron Ingestion Gateway & Clinical Translation Engine
+Project: BCI Signal Ingestion Gateway & Clinical Translation Engine
 Document Owner: Manav Davis
 Status: Prototype / V1
 1. Executive Summary
-Axoft’s flexible polymer electrodes provide a massive biocompatibility advantage by eliminating gliosis (scarring). However, this soft hardware introduces a unique data challenge: physical micromotion caused by cerebrospinal fluid pulsations and heartbeats. This PRD outlines a streaming data pipeline designed to mathematically stabilize this micromotion artifact in real-time, format the data for Axoft’s TN-VAE decoding models, and translate the pipeline’s efficacy into an FDA-facing "Chronic Stability" dashboard.
+Flexible polymer electrodes provide a massive biocompatibility advantage by eliminating gliosis (scarring). However, this soft hardware introduces a unique data challenge: physical micromotion caused by cerebrospinal fluid pulsations and heartbeats. This PRD outlines a streaming data pipeline designed to mathematically stabilize this micromotion artifact in real-time, format the data for TN-VAE decoding models, and translate the pipeline's efficacy into an FDA-facing "Chronic Stability" dashboard.
 2. Problem Statement & Biological Constraints
-Traditional rigid arrays (like Utah Arrays) are physically static, ensuring a consistent distance to the neuron. Axoft’s arrays "float." As the brain pulsates, the distance between the electrode and the neuron shifts, causing two critical signal degradations:
+Traditional rigid arrays (like Utah Arrays) are physically static, ensuring a consistent distance to the neuron. Flexible arrays "float." As the brain pulsates, the distance between the electrode and the neuron shifts, causing two critical signal degradations:
 Baseline Drift: A low-frequency rolling artifact (the "ocean wave").
 Amplitude Variance: The neural spikes change in voltage as the physical distance fluctuates.
 If this raw, drifting data is fed directly into a latent-space AI decoder, the model will interpret the physical hardware movement as a change in the user's neural intent, causing the BCI to fail.
@@ -20,7 +20,7 @@ Logic: x{clean} = x{t} - μ{window}
 Purpose: Instantly flattens the low-frequency heartbeat drift, snapping the signal baseline back to absolute zero.
 Operation 2 (Amplitude Normalization): Hyperbolic Tangent (tanh) Soft-Clipping.
 Logic: y{t} = tanh(α * x{clean})
-Purpose: tanh is an elegant, non-linear function that squashes extreme artifact noise into a strict [-1, 1] bound while preserving the relative morphology of the neural spikes. It normalizes the data for the TN-VAE models using a single, low-cost operation.
+Purpose: tanh is an elegant, non-linear function that squashes extreme artifact noise into a strict [-1, 1] bound while preserving the relative morphology of the neural spikes. It normalizes the data for TN-VAE models using a single, low-cost operation.
 5. Functional Product Requirements
 The system must bridge the gap between R&D data processing and Go-To-Market clinical utility.
 Requirement 1: AI-Ready Hand-off

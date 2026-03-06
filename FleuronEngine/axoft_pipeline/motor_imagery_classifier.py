@@ -1,5 +1,5 @@
 """
-Motor Imagery Classifier for Axoft BCI Pipeline
+Motor Imagery Classifier for BCI Pipeline
 ================================================
 
 Classifies left vs right hand motor imagery using mu rhythm (8-12Hz) suppression.

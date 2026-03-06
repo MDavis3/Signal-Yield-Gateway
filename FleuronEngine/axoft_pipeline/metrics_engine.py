@@ -15,7 +15,7 @@ Key Functions:
 Business Value:
 ---------------
 These metrics bridge the gap between engineering physics and clinical outcomes,
-enabling Axoft to communicate device performance to FDA reviewers, clinicians,
+enabling communication of device performance to FDA reviewers, clinicians,
 and investors who don't understand DSP math.
 
 Author: Senior AI Software Engineer & BCI Data Architect
@@ -361,7 +361,7 @@ def calculate_active_channels(
         Current Signal Yield percentage (0.0-100.0)
     total_channels : int
         Total number of electrodes in array (default: 10,000)
-        Axoft's target high-density array spec
+        Target high-density array spec
 
     Returns:
     --------

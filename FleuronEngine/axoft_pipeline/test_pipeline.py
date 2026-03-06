@@ -1,10 +1,10 @@
 """
-Axoft Pipeline Test Suite
+BCI Pipeline Test Suite
 =========================
 Systematic verification that signal processing improvements work correctly.
 
-Run: python -m pytest axoft_pipeline/test_pipeline.py -v
-Or:  python axoft_pipeline/test_pipeline.py  (standalone)
+Run: python -m pytest pipeline/test_pipeline.py -v
+Or:  python pipeline/test_pipeline.py  (standalone)
 
 Tests verify:
 - IIR highpass filter removes DC offset while preserving alpha rhythms

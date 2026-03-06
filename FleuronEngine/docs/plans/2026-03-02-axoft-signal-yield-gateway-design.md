@@ -1,17 +1,16 @@
-# Axoft Signal Yield & Clinical Translation Gateway - Design Document
+# BCI Signal Yield & Clinical Translation Gateway - Design Document
 
 **Date:** 2026-03-02
 **Author:** Lead Systems Architect
-**Reviewer:** Senior AI Software Engineer & BCI Data Architect
 **Status:** Approved
 
 ## Executive Summary
 
-This document specifies the architecture for a Signal Yield & Clinical Translation Gateway prototype for Axoft's flexible polymer BCI electrodes. The system addresses the micromotion-induced baseline drift problem through thermally-constrained O(1) DSP operations while providing dual personas (R&D and Clinical/FDA) for stakeholder communication.
+This document specifies the architecture for a Signal Yield & Clinical Translation Gateway prototype for flexible polymer BCI electrodes. The system addresses the micromotion-induced baseline drift problem through thermally-constrained O(1) DSP operations while providing dual personas (R&D and Clinical/FDA) for stakeholder communication.
 
 ## Problem Statement
 
-Axoft's ultra-soft polymer electrodes solve brain scarring (gliosis) but suffer from physical micromotion due to heartbeat and respiration. This creates:
+Ultra-soft polymer electrodes solve brain scarring (gliosis) but suffer from physical micromotion due to heartbeat and respiration. This creates:
 - Severe low-frequency baseline drift in raw neural data
 - Variable spike amplitudes as electrodes move relative to neurons
 - Incompatible data format for TN-VAE latent-space decoders
@@ -26,7 +25,7 @@ Axoft's ultra-soft polymer electrodes solve brain scarring (gliosis) but suffer 
 ### Module Structure
 
 ```
-axoft_pipeline/
+pipeline/
 ├── __init__.py                 # Package initialization
 ├── dsp_pipeline.py            # O(1) signal processing functions
 ├── data_simulator.py          # Synthetic hardware data generation
@@ -102,7 +101,7 @@ axoft_pipeline/
 - More robust than amplitude threshold alone (fails as electrode drifts)
 
 ### Why Modular Architecture Over Monolith?
-- Demonstrates production-grade separation of concerns to Axoft
+- Demonstrates production-grade separation of concerns
 - DSP functions can be integrated directly into firmware/ML pipelines
 - Easy to unit test each component independently
 - Clean abstraction allows Redis swap for production deployment
@@ -188,12 +187,12 @@ For production deployment, swap to `"redis"` without modifying other modules.
 1. **Redis Integration**: Uncomment `RedisStorage` class, deploy backend
 2. **Multi-Channel Processing**: Extend to 10,000 parallel channels
 3. **TN-VAE Integration**: Pipe cleaned tensors to latent-space decoder
-4. **Real Hardware Interface**: Replace simulator with actual Axoft electrode data stream
+4. **Real Hardware Interface**: Replace simulator with actual electrode data stream
 5. **Adaptive Parameters**: Auto-tune tanh alpha and moving avg window based on drift detection
 
 ## References
 
-- Axoft Hardware Specifications: Flexible Polymer BCI Electrodes
+- Hardware Specifications: Flexible Polymer BCI Electrodes
 - Thermal Constraints: <1°C tissue temperature increase limit
 - FDA Statistical Requirements: ±2σ variance envelope for stability demonstration
 - TN-VAE Decoder Requirements: Float32 tensors normalized to [-1, 1]

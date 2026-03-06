@@ -1,10 +1,10 @@
 """
-Axoft Signal Yield & Clinical Translation Gateway
+BCI Signal Yield & Clinical Translation Gateway
 ==================================================
 
-A production-grade BCI signal processing pipeline designed for Axoft's
-flexible polymer electrodes. Addresses micromotion-induced baseline drift
-through thermally-constrained O(1) DSP operations.
+A production-grade BCI signal processing pipeline designed for flexible
+polymer electrodes. Addresses micromotion-induced baseline drift through
+thermally-constrained O(1) DSP operations.
 
 Modules:
 --------
@@ -25,7 +25,7 @@ Date: 2026-03-02
 """
 
 __version__ = "0.1.0"
-__author__ = "Axoft Engineering Team"
+__author__ = "Manav Davis"
 
 # Package metadata
 __all__ = [

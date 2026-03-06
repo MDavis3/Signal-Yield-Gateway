@@ -2,8 +2,8 @@
 DSP Pipeline - Core Signal Processing
 ======================================
 
-Implements thermally-constrained signal processing operations for Axoft's
-flexible BCI electrodes. All operations are designed for O(1) or highly
+Implements thermally-constrained signal processing operations for flexible
+BCI electrodes. All operations are designed for O(1) or highly
 efficient O(n) complexity to stay within thermal and latency budgets.
 
 Key Functions:

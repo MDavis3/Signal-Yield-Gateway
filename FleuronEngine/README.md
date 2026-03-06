@@ -1,4 +1,4 @@
-# Axoft Signal Yield & Clinical Translation Gateway
+# BCI Signal Yield & Clinical Translation Gateway
 
 **Production-grade BCI signal processing pipeline addressing micromotion-induced baseline drift in ultra-soft polymer electrodes**
 
@@ -10,7 +10,7 @@
 
 ## Overview
 
-This system solves a critical challenge for **Axoft's flexible brain-computer interface (BCI) electrodes**: while the ultra-soft polymer material prevents tissue scarring (gliosis), it suffers from severe baseline drift caused by physical micromotion from heartbeat and respiration (±500 μV swings).
+This system solves a critical challenge for **flexible brain-computer interface (BCI) electrodes**: while ultra-soft polymer materials prevent tissue scarring (gliosis), they suffer from severe baseline drift caused by physical micromotion from heartbeat and respiration (±500 μV swings).
 
 The pipeline implements **thermally-constrained O(n) DSP operations** to clean unstable signals while maintaining strict hardware constraints:
 - **Thermal Budget:** <1°C tissue heating (prevents necrosis)
@@ -19,7 +19,7 @@ The pipeline implements **thermally-constrained O(n) DSP operations** to clean u
 
 ### The Problem
 
-Axoft's flexible electrodes solve brain scarring but create new challenges:
+Flexible polymer electrodes solve brain scarring but create new challenges:
 - Severe low-frequency baseline drift (±500 μV) from micromotion
 - Variable spike amplitudes as electrodes move relative to neurons
 - Incompatible data format for TN-VAE latent-space decoders
@@ -85,10 +85,10 @@ git clone https://github.com/MDavis3/Signal-Yield-Gateway.git
 cd Signal-Yield-Gateway
 
 # 2. Install dependencies
-pip install -r axoft_pipeline/requirements.txt
+pip install -r pipeline/requirements.txt
 
 # 3. Run the Streamlit dashboard
-streamlit run axoft_pipeline/app.py
+streamlit run pipeline/app.py
 ```
 
 The dashboard will open in your browser at `http://localhost:8501`
@@ -100,14 +100,14 @@ The dashboard will open in your browser at `http://localhost:8501`
 ### Module Breakdown
 
 ```
-axoft_pipeline/
+pipeline/
 ├── app.py                     # Streamlit UI with 3 view modes
 ├── data_simulator.py          # Synthetic hardware data generation
 ├── dsp_pipeline.py            # O(n) signal processing (highpass, notch, detrending)
 ├── metrics_engine.py          # FDA/clinical business logic
 ├── storage_manager.py         # Backend abstraction layer
-├── real_data_loader.py        # PhysioNet EDF file loader (NEW)
-├── motor_imagery_classifier.py # C3/C4 mu-band BCI classifier (NEW)
+├── real_data_loader.py        # PhysioNet EDF file loader
+├── motor_imagery_classifier.py # C3/C4 mu-band BCI classifier
 ├── test_pipeline.py           # Comprehensive test suite
 └── requirements.txt           # Dependencies
 ```
@@ -177,7 +177,7 @@ Use the preset buttons for optimal parameter combinations:
 
 ### For R&D Engineers
 
-1. Launch: `streamlit run axoft_pipeline/app.py`
+1. Launch: `streamlit run pipeline/app.py`
 2. Select **"R&D Engineer View"** in sidebar
 3. Use preset buttons or adjust parameters:
    - **Micromotion Drift Severity**: 0.0 (ideal) → 2.0 (severe)
@@ -323,7 +323,7 @@ pip install --upgrade streamlit
 cd Signal-Yield-Gateway
 
 # Reinstall dependencies
-pip install -r axoft_pipeline/requirements.txt
+pip install -r pipeline/requirements.txt
 ```
 
 ---
@@ -337,7 +337,7 @@ pip install -r axoft_pipeline/requirements.txt
 pip install pytest pytest-cov
 
 # Run tests (when available)
-pytest axoft_pipeline/tests/ -v --cov=axoft_pipeline
+pytest pipeline/tests/ -v --cov=pipeline
 ```
 
 ### Code Formatting
@@ -347,17 +347,8 @@ pytest axoft_pipeline/tests/ -v --cov=axoft_pipeline
 pip install black
 
 # Format code
-black axoft_pipeline/ --line-length 100
+black pipeline/ --line-length 100
 ```
-
----
-
-## Project Documentation
-
-For detailed architecture and design rationale, see:
-- **Comprehensive Guide:** `axoft_pipeline/README.md`
-- **PRD:** `prd.md`
-- **Architecture Diagram:** `draw.png`
 
 ---
 
@@ -396,7 +387,6 @@ For detailed architecture and design rationale, see:
 
 **Developed by:** Manav Davis
 **Date:** March 2026
-**Purpose:** Axoft Internship Technical Assessment
 **Status:** Prototype / Demo (Not for Clinical Use)
 
 For questions or feedback:
@@ -413,7 +403,6 @@ MIT License - See LICENSE file for details
 
 ## Acknowledgments
 
-- **Axoft**: For the opportunity to work on cutting-edge BCI technology
 - **Neural Engineering Literature**: Papers on chronic BCI stability, spike sorting, drift compensation
 - **Open Source Tools**: Streamlit, Plotly, NumPy, SciPy
 

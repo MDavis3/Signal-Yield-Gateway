@@ -1,5 +1,5 @@
 """
-Real Neural Data Loader for Axoft Signal Processing Pipeline
+Real Neural Data Loader for BCI Signal Processing Pipeline
 
 Loads PhysioNet EEG Motor Movement/Imagery Dataset (or other EDF files)
 and provides chunks in the same format as the synthetic data generator.

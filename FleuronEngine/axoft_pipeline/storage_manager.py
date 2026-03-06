@@ -291,7 +291,7 @@ class RedisStorage(StorageManager):
 
     Storage Schema:
     ---------------
-    Key Pattern: axoft:session:{session_id}:epoch:{epoch_num}
+    Key Pattern: bci:session:{session_id}:epoch:{epoch_num}
     Value: JSON serialized dict with {tensor, yield, metadata, timestamp}
     """
 
@@ -337,7 +337,7 @@ class RedisStorage(StorageManager):
         Production implementation would:
         1. Serialize tensor to bytes (msgpack or pickle)
         2. Create JSON payload with {tensor_bytes, yield, metadata, timestamp}
-        3. Store in Redis with key: axoft:session:{session_id}:epoch:{epoch_num}
+        3. Store in Redis with key: bci:session:{session_id}:epoch:{epoch_num}
         4. Set TTL (e.g., 24 hours) to auto-expire old data
         """
         # STUB: Use in-memory fallback
@@ -346,7 +346,7 @@ class RedisStorage(StorageManager):
         # UNCOMMENT FOR ACTUAL REDIS:
         # import msgpack
         # epoch_num = self.get_epoch_count() + 1
-        # key = f"axoft:session:{self.session_id}:epoch:{epoch_num}"
+        # key = f"bci:session:{self.session_id}:epoch:{epoch_num}"
         #
         # # Serialize data
         # tensor_bytes = msgpack.packb(cleaned_tensor.tobytes())
@@ -380,7 +380,7 @@ class RedisStorage(StorageManager):
 
         # UNCOMMENT FOR ACTUAL REDIS:
         # # Delete all keys matching session pattern
-        # pattern = f"axoft:session:{self.session_id}:epoch:*"
+        # pattern = f"bci:session:{self.session_id}:epoch:*"
         # for key in self.client.scan_iter(match=pattern):
         #     self.client.delete(key)
 

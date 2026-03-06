@@ -1,5 +1,5 @@
 """
-Comprehensive Test Suite for Axoft Signal Yield Gateway
+Comprehensive Test Suite for BCI Signal Yield Gateway
 ========================================================
 
 This test suite validates the correctness of:
@@ -852,7 +852,7 @@ def test_polyfit_latency_budget():
 
 def run_all_tests():
     print("\n" + "=" * 80)
-    print("AXOFT SIGNAL YIELD GATEWAY - COMPREHENSIVE TEST SUITE")
+    print("BCI SIGNAL YIELD GATEWAY - COMPREHENSIVE TEST SUITE")
     print("=" * 80)
     print("Testing all components: Simulator, DSP, Metrics, Storage, Integration")
     print("=" * 80)

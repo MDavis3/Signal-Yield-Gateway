@@ -1,6 +1,6 @@
 
 ================================================================================
-AXOFT SIGNAL YIELD GATEWAY - COMPREHENSIVE TEST SUITE
+BCI SIGNAL YIELD GATEWAY - COMPREHENSIVE TEST SUITE
 ================================================================================
 Testing all components: Simulator, DSP, Metrics, Storage, Integration
 ================================================================================

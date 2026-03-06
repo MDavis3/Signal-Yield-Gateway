@@ -1,4 +1,4 @@
-# Bug Report: Axoft Signal Yield Gateway
+# Bug Report: BCI Signal Yield Gateway
 
 **Date:** 2026-03-02
 **Test Results:** 62/66 tests passed (93.9%), **4 failures identified**

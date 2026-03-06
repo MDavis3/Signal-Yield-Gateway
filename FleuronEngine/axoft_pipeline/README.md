@@ -1,20 +1,20 @@
-# Axoft Signal Yield & Clinical Translation Gateway
+# BCI Signal Yield & Clinical Translation Gateway
 
-**Production-grade BCI signal processing pipeline for Axoft's flexible polymer electrodes**
+**Production-grade BCI signal processing pipeline for flexible polymer electrodes**
 
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.30+-red.svg)](https://streamlit.io)
-[![License](https://img.shields.io/badge/license-Proprietary-green.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 ---
 
 ## Overview
 
-This system addresses the critical micromotion-induced baseline drift problem in Axoft's ultra-soft polymer BCI electrodes through thermally-constrained O(1) DSP operations, while providing dual personas (R&D and Clinical/FDA) for stakeholder communication.
+This system addresses the critical micromotion-induced baseline drift problem in ultra-soft polymer BCI electrodes through thermally-constrained O(1) DSP operations, while providing dual personas (R&D and Clinical/FDA) for stakeholder communication.
 
 ### The Problem
 
-Axoft's flexible electrodes solve brain scarring (gliosis) but suffer from physical micromotion due to heartbeat and respiration, creating:
+Flexible electrodes solve brain scarring (gliosis) but suffer from physical micromotion due to heartbeat and respiration, creating:
 - Severe low-frequency baseline drift (±500 μV)
 - Variable spike amplitudes as electrodes move relative to neurons
 - Incompatible data format for TN-VAE latent-space decoders
@@ -44,7 +44,7 @@ A modular DSP pipeline with **strict thermal and latency constraints**:
 ### ▶️ Playback Controls
 - **Play Mode:** Auto-stream 50ms chunks in real-time
 - **Pause Mode:** Freeze state for parameter tweaking
-- **Step Mode:** Single chunk generation for frame-by-frame explanation (perfect for Loom videos)
+- **Step Mode:** Single chunk generation for frame-by-frame explanation
 
 ---
 
@@ -53,7 +53,7 @@ A modular DSP pipeline with **strict thermal and latency constraints**:
 ### Module Breakdown
 
 ```
-axoft_pipeline/
+pipeline/
 ├── __init__.py                 # Package initialization
 ├── dsp_pipeline.py            # O(1) signal processing (150 lines)
 ├── data_simulator.py          # Synthetic hardware data generation (100 lines)
@@ -109,7 +109,7 @@ axoft_pipeline/
 
 ```bash
 # 1. Clone or download the repository
-cd axoft_pipeline
+cd pipeline
 
 # 2. Install dependencies
 pip install -r requirements.txt
@@ -176,182 +176,15 @@ streamlit run app.py
    - ⚠️ **Warning:** Degraded performance but operational
    - 🔴 **Critical:** Hardware fault suspected, requires intervention
 
-### For Loom Video Presentation
-
-1. **Start in Clinical View** to show business value
-2. **Click "Step"** to generate one chunk at a time
-3. **Use Preset buttons** (Demo/Real/Stress) to demonstrate different noise scenarios
-4. **Switch to R&D View** to explain the math
-5. **Adjust Tanh Alpha** to demonstrate compression trade-offs for spike visibility
-6. **Zoom out Stability Window** to 200 epochs to prove long-term viability
-7. **Pause and point to ±2σ envelope** to highlight FDA statistical compliance
-
----
-
-## Understanding Signal Oscillations
-
-### Why Does the Cyan Line Oscillate?
-
-The cyan (tanh-normalized) line may appear to oscillate rapidly, especially at higher noise levels. **This is NORMAL for realistic biological data** and NOT a bug.
-
-### The Science Behind Oscillations
-
-**Gaussian Noise Has Inherent High-Frequency Content:**
-- Background noise in BCI recordings is modeled as Gaussian white noise (thermal/electrical noise)
-- Each sample is an independent random draw from a normal distribution
-- Consecutive samples are uncorrelated, creating natural sample-to-sample fluctuations
-- The DSP pipeline CORRECTLY preserves this noise (it's real signal content)
-- Tanh normalization makes the noise visible by scaling to [-1, 1]
-
-**This is NOT ringing artifacts!** Both moving average and polynomial detrending produce identical oscillation levels, proving the oscillations are from noise, not filter artifacts.
-
 ### Preset Configurations
 
 Use the preset buttons in the dashboard sidebar for different scenarios:
 
 | Preset | Noise | Drift | Alpha | Use Case |
 |--------|-------|-------|-------|----------|
-| **🎯 Demo Mode** | 0.10 | 0.20 | 0.70 | Clean visualization for presentations, simulates good recording conditions |
-| **⚙️ Real Mode** | 0.30 | 0.40 | 1.00 | Realistic biological conditions with typical micromotion and noise |
-| **🔥 Stress Test** | 0.50 | 1.00 | 1.50 | Worst-case testing, maximum noise and drift |
-
-**Recommendation for Videos/Demos:** Use Demo Mode (noise=0.10) for clean visualization while remaining scientifically accurate. This represents good recording conditions commonly achieved in research settings.
-
-### Technical Details
-
-**With noise_level = 0.30 (Realistic):**
-- Noise std: ~9 μV (typical biological recording)
-- After tanh normalization: ~88% of samples have |diff| > 0.1
-- This represents realistic thermal/biological noise in BCI recordings
-
-**With noise_level = 0.10 (Demo):**
-- Noise std: ~3 μV (good recording conditions)
-- After tanh normalization: ~40-50% of samples have |diff| > 0.1
-- Clean visualization while preserving spike morphology
-
-**Polyfit Detrending Achievement:**
-- Eliminated ringing artifacts from moving average filtering (verified with clean test signals)
-- Preserves natural biological noise (correct behavior)
-- Current oscillations are from Gaussian noise, not DSP artifacts
-
-### FAQ
-
-**Q: Should I use smoothing to eliminate oscillations?**
-A: For demo purposes, use the Demo preset instead. Smoothing destroys spike morphology needed by ML decoders.
-
-**Q: Is this a bug in the pipeline?**
-A: No! The pipeline is working correctly. Gaussian noise naturally creates high-frequency oscillations.
-
-**Q: Which setting should I use for my Axoft presentation?**
-A: Use Demo Mode (noise=0.10, drift=0.20) for clean visualization that represents good recording conditions.
-
-### Tanh Alpha Parameter Guide
-
-The **Tanh Alpha** parameter controls compression steepness and affects spike visibility in noisy signals.
-
-**How Alpha Affects Visualization:**
-
-| Alpha Range | Behavior | Best For |
-|-------------|----------|----------|
-| **0.4-0.7** | More linear, soft compression | Clean signals (Demo mode) |
-| **0.8-1.2** | Balanced compression | Realistic noise levels (Real mode) |
-| **1.5-3.0** | Strong saturation, spikes pushed to ±1.0 | Noisy signals (Stress mode) |
-
-**Why Alpha Matters for Visual Clarity:**
-
-With **low alpha** + **high noise** (Real/Stress modes):
-- Spikes only reach ±0.7-0.8 instead of ±1.0
-- Noise occupies similar amplitude range as spikes
-- Poor visual separation → spikes less prominent
-- Mathematically cleaner (fewer oscillations) but harder to see spikes
-
-With **appropriate alpha** for noise level:
-- Spikes saturate closer to ±1.0 (clear peaks at plot edges)
-- Noise compressed to smaller relative amplitude
-- Better visual separation → spikes "pop out" from background
-- More oscillations technically, but better perceptual clarity
-
-**Recommended Alpha Values (Automatically Set by Presets):**
-
-| Scenario | Noise | Drift | Alpha | Why |
-|----------|-------|-------|-------|-----|
-| **Demo Mode** | 0.10 | 0.20 | 0.70 | Signal already clean, lower alpha preserves detail |
-| **Real Mode** | 0.30 | 0.40 | 1.00 | Balanced compression for realistic noise |
-| **Stress Test** | 0.50 | 1.00 | 1.50 | Strong compression needed for spike visibility |
-
-**Pro Tip**: The preset buttons automatically set optimal alpha for each scenario! You can still manually adjust if needed.
-
-**Visual Clarity Warning**: The dashboard will warn you if alpha is too low for the current noise level, suggesting an appropriate value.
-
----
-
-## API Reference
-
-### Data Simulator
-
-```python
-from data_simulator import generate_synthetic_chunk
-
-# Generate 50ms chunk @ 40kHz with severe drift
-chunk = generate_synthetic_chunk(
-    duration_ms=50.0,
-    sample_rate=40000,
-    noise_level=0.5,
-    drift_severity=1.5,
-    spike_rate=25.0
-)
-# Returns: numpy array (2000 samples, float32)
-```
-
-### DSP Pipeline
-
-```python
-from dsp_pipeline import process_signal_streaming
-
-# Process chunk through pipeline
-config = {
-    'moving_avg_window': 500,
-    'tanh_alpha': 1.0,
-    'spike_threshold': 3.0
-}
-
-cleaned_tensor, latency_ms, metadata = process_signal_streaming(chunk, config)
-# Returns: (cleaned signal, latency, {spike_count, variance, mean, has_nan, has_inf})
-```
-
-### Metrics Engine
-
-```python
-from metrics_engine import calculate_signal_yield, StabilityTracker
-
-# Calculate signal yield %
-yield_pct = calculate_signal_yield(cleaned_tensor, metadata['spike_count'], metadata)
-# Returns: 0.0-100.0
-
-# Track chronic stability
-tracker = StabilityTracker(max_history=200)
-tracker.add_yield(yield_pct)
-stability_index, stability_variance = tracker.calculate_stability_index(window_size=50)
-# Returns: (rolling mean, std dev)
-```
-
-### Storage Manager
-
-```python
-from storage_manager import create_storage
-
-# In-memory storage (default)
-storage = create_storage("in_memory")
-
-# Redis storage (production)
-storage = create_storage("redis", host="redis.example.com", port=6379, session_id="demo")
-
-# Save tensor
-storage.save_tensor(cleaned_tensor, yield_pct, metadata)
-
-# Retrieve yield history
-yield_history = storage.get_yield_history(max_count=200)
-```
+| **🎯 Demo Mode** | 0.10 | 0.20 | 0.70 | Clean visualization for presentations |
+| **⚙️ Real Mode** | 0.30 | 0.40 | 1.00 | Realistic biological conditions |
+| **🔥 Stress Test** | 0.50 | 1.00 | 1.50 | Worst-case testing |
 
 ---
 
@@ -369,16 +202,6 @@ yield_history = storage.get_yield_history(max_count=200)
 **Thermal Budget Compliance:** ✅ Well within <1°C constraint
 **Latency Budget Compliance:** ✅ Well within <20ms constraint
 
-### Comparison: Heavy Filters (What We Avoided)
-
-| Operation | Complexity | Latency | Thermal Impact |
-|-----------|------------|---------|----------------|
-| scipy.signal.butter (8th order) | O(n log n) | 15 ms | Moderate |
-| FFT-based filtering | O(n log n) | 25 ms | High |
-| Deep neural net denoiser | O(n²) | 150 ms | **CRITICAL** |
-
-**Why we can't use these:** Tissue necrosis risk from heat generation
-
 ---
 
 ## Troubleshooting
@@ -387,7 +210,7 @@ yield_history = storage.get_yield_history(max_count=200)
 
 ```bash
 # Ensure you're in the correct directory
-cd axoft_pipeline
+cd pipeline
 
 # Reinstall dependencies
 pip install -r requirements.txt
@@ -403,29 +226,18 @@ pip show streamlit
 pip install --upgrade streamlit
 ```
 
-### Redis connection error (production mode)
-
-```bash
-# Verify Redis is running
-redis-cli ping
-# Should return: PONG
-
-# Check storage_manager.py configuration
-# Ensure host/port match your Redis deployment
-```
-
 ---
 
 ## Development
 
-### Running Tests (Future)
+### Running Tests
 
 ```bash
 # Install dev dependencies
 pip install pytest pytest-cov
 
 # Run tests
-pytest tests/ -v --cov=axoft_pipeline
+pytest tests/ -v --cov=pipeline
 ```
 
 ### Code Formatting
@@ -435,73 +247,53 @@ pytest tests/ -v --cov=axoft_pipeline
 pip install black
 
 # Format code
-black axoft_pipeline/ --line-length 100
+black pipeline/ --line-length 100
 ```
-
----
-
-## Technical Documentation
-
-For detailed architecture and design rationale, see:
-- **Design Document:** `docs/plans/2026-03-02-axoft-signal-yield-gateway-design.md`
-- **PRD:** `prd.md`
-- **Architecture Diagram:** `draw.png`
 
 ---
 
 ## License
 
-**Proprietary - Axoft Corporation**
-
-This software is confidential and proprietary to Axoft. Unauthorized copying, distribution, or use is strictly prohibited.
+MIT License - See LICENSE file for details
 
 ---
 
 ## Authors
 
-- **Lead Systems Architect:** Manav Davis
-- **Senior AI Software Engineer & BCI Data Architect:** Claude Sonnet 4.5
+- **Lead Developer:** Manav Davis
 
 ---
 
 ## Changelog
 
+### v0.3.0 (2026-03-05)
+- **MAJOR:** Added real PhysioNet EEG data support (64-channel, 160Hz)
+- **NEW:** Motor Imagery BCI view with C3/C4 mu-band classification
+- **NEW:** Frequency band power analysis (delta/theta/alpha/beta/gamma)
+- **NEW:** Multi-channel waterfall view (4-8 channels)
+- **NEW:** 60Hz notch filter for power line interference removal
+
 ### v0.2.1 (2026-03-03)
-- **IMPROVED:** Preset buttons now set optimal alpha values for each scenario (Demo=0.7, Real=1.0, Stress=1.5)
+- **IMPROVED:** Preset buttons now set optimal alpha values for each scenario
 - **NEW:** Added visual clarity warning for suboptimal alpha/noise combinations
-- **DOCS:** Added comprehensive "Tanh Alpha Parameter Guide" section
-- **IMPROVED:** Enhanced tanh_alpha slider help text with specific recommendations
-- Updated preset caption to clarify that alpha is also set
 
 ### v0.2.0 (2026-03-03)
-- **MAJOR:** Replaced moving average with polynomial detrending (eliminates ringing artifacts)
-- **NEW:** Added preset buttons for Demo/Realistic/Stress Test configurations
-- **IMPROVED:** Changed default noise_level from 0.30 → 0.10 for cleaner demo visualization
-- **DOCS:** Added comprehensive "Understanding Signal Oscillations" section
-- **DOCS:** Clarified Gaussian noise vs ringing artifacts distinction
-- **FIX:** Polyfit detrending verified to eliminate MA ringing while preserving spike morphology
-- Enhanced help text for noise_level slider with scenario descriptions
+- **MAJOR:** Replaced moving average with polynomial detrending (eliminates ringing)
+- **NEW:** Added preset buttons for Demo/Real/Stress configurations
 
 ### v0.1.0 (2026-03-02)
 - Initial release
 - Modular architecture (5 core modules)
 - Dual persona dashboard (R&D / Clinical)
 - Play/Pause/Step playback controls
-- Multi-factor Signal Yield scoring
-- Chronic Stability Index tracking
-- In-memory storage backend (Redis stub)
-- O(1) moving average, derivative spike detection, tanh normalization
-- <20ms latency compliance
-- <1°C thermal budget compliance
 
 ---
 
 ## Contact
 
-For questions, issues, or feature requests:
-- **Email:** engineering@axoft.com
-- **Internal Slack:** #bci-signal-processing
-- **Project Lead:** Manav Davis
+For questions or feedback:
+- **LinkedIn:** https://www.linkedin.com/in/manavdavis313/
+- **Email:** manav_davis@brown.edu
 
 ---
 

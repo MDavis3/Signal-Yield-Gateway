@@ -1,5 +1,5 @@
 """
-Axoft Signal Yield & Clinical Translation Gateway - Streamlit Dashboard
+BCI Signal Yield & Clinical Translation Gateway - Streamlit Dashboard
 ========================================================================
 
 Production-grade BCI signal processing visualization with dual persona views:
@@ -39,7 +39,7 @@ from storage_manager import create_storage, DEFAULT_STORAGE_BACKEND
 # ============================================================================
 
 st.set_page_config(
-    page_title="Axoft Signal Yield Gateway",
+    page_title="BCI Signal Yield Gateway",
     page_icon="🧠",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -116,7 +116,7 @@ initialize_session_state()
 # ============================================================================
 
 with st.sidebar:
-    st.title("⚙️ Axoft Pipeline Controller")
+    st.title("⚙️ BCI Pipeline Controller")
 
     st.markdown("---")
     st.subheader("📋 Presets")
@@ -523,7 +523,7 @@ if st.session_state.is_playing or st.button("Generate", key="hidden_generate", d
 # Main UI - View-Specific Rendering
 # ============================================================================
 
-st.title("🧠 Axoft Signal Yield & Clinical Translation Gateway")
+st.title("🧠 BCI Signal Yield & Clinical Translation Gateway")
 
 # ============================================================================
 # Data Source Banner
@@ -914,7 +914,7 @@ if view_mode == "R&D Engineer View":
 
                 st.caption(
                     f"**Channels displayed**: {', '.join(multi_meta.get('channels', selected_names))} | "
-                    f"This view demonstrates scalability - Axoft's 10,000 electrode arrays would show "
+                    f"This view demonstrates scalability - high-density 10,000 electrode arrays would show "
                     f"many more channels in a similar waterfall format."
                 )
 

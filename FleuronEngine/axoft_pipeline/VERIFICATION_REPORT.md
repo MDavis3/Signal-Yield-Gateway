@@ -1,4 +1,4 @@
-# Verification Report: Axoft Signal Yield Gateway
+# Verification Report: BCI Signal Yield Gateway
 
 **Date:** 2026-03-02
 **Test Suite Version:** 1.0
@@ -296,7 +296,7 @@ Status: ✅ PRODUCTION READY
 
 ## Conclusion
 
-The Axoft Signal Yield Gateway has been **thoroughly tested and verified** as production-ready. All critical bugs have been identified and fixed:
+The BCI Signal Yield Gateway has been **thoroughly tested and verified** as production-ready. All critical bugs have been identified and fixed:
 
 - ✅ **Spike detection** now operates at correct threshold (30.0 μV)
 - ✅ **Drift simulation** captures full range of micromotion scenarios
@@ -308,7 +308,7 @@ The Axoft Signal Yield Gateway has been **thoroughly tested and verified** as pr
 - Thermal: **<0.01°C** (99% under 1°C budget)
 - Reliability: **100%** (no failures in 10-chunk integration test)
 
-**The system is ready for Oliver's Loom demonstration to Axoft stakeholders.**
+**The system is ready for demonstration.**
 
 ---
 

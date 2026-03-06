@@ -2,7 +2,7 @@
 Data Simulator - Mock Hardware Signal Generation
 =================================================
 
-Generates synthetic neural data that mimics Axoft's flexible polymer electrode
+Generates synthetic neural data that mimics flexible polymer electrode
 output, including realistic micromotion artifacts for testing the DSP pipeline.
 
 Key Functions:
@@ -39,7 +39,7 @@ def generate_synthetic_chunk(
     seed: int = None
 ) -> np.ndarray:
     """
-    Generate a synthetic chunk of neural data mimicking Axoft electrode output.
+    Generate a synthetic chunk of neural data mimicking flexible electrode output.
 
     This function simulates the three main components of real BCI data:
 
@@ -65,7 +65,7 @@ def generate_synthetic_chunk(
         Chunk duration in milliseconds (default: 50ms per chunk)
     sample_rate : int
         Sampling frequency in Hz (default: 40kHz = 40,000 samples/second)
-        Axoft hardware spec: 40kHz per channel
+        Hardware spec: 40kHz per channel
     noise_level : float
         Gaussian noise amplitude scaling factor (0.0-1.0)
         0.0 = pristine (unrealistic), 1.0 = very noisy
