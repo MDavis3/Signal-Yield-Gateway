@@ -1,4 +1,4 @@
-# Axoft Signal Yield & Clinical Translation Gateway
+# Signal Yield & Clinical Translation Gateway
 
 **Production-grade BCI signal processing pipeline addressing micromotion-induced baseline drift in ultra-soft polymer electrodes**
 
@@ -10,7 +10,7 @@
 
 ## Overview
 
-This system solves a critical challenge for **Axoft's flexible brain-computer interface (BCI) electrodes**: while the ultra-soft polymer material prevents tissue scarring (gliosis), it suffers from severe baseline drift caused by physical micromotion from heartbeat and respiration (±500 μV swings).
+This system solves a critical challenge for **flexible brain-computer interface (BCI) electrodes**: while the ultra-soft polymer material prevents tissue scarring (gliosis), it suffers from severe baseline drift caused by physical micromotion from heartbeat and respiration (±500 μV swings).
 
 The pipeline implements **thermally-constrained O(n) DSP operations** to clean unstable signals while maintaining strict hardware constraints:
 - **Thermal Budget:** <1°C tissue heating (prevents necrosis)
@@ -19,7 +19,7 @@ The pipeline implements **thermally-constrained O(n) DSP operations** to clean u
 
 ### The Problem
 
-Axoft's flexible electrodes solve brain scarring but create new challenges:
+Flexible electrodes solve brain scarring but create new challenges:
 - Severe low-frequency baseline drift (±500 μV) from micromotion
 - Variable spike amplitudes as electrodes move relative to neurons
 - Incompatible data format for TN-VAE latent-space decoders
