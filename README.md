@@ -8,6 +8,8 @@
 
 ---
 
+<img width="1471" height="643" alt="asdasd" src="https://github.com/user-attachments/assets/251c1433-6cc6-4917-be68-5cf8e3649aa1" />
+
 ## Overview
 
 This system solves a critical challenge for **flexible brain-computer interface (BCI) electrodes**: while the ultra-soft polymer material prevents tissue scarring (gliosis), it suffers from severe baseline drift caused by physical micromotion from heartbeat and respiration (±500 μV swings).
